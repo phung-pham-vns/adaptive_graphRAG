@@ -1,0 +1,23 @@
+[project]
+name = "adaptive-rag"
+version = "0.1.0"
+description = "Adaptive RAG"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "python-dotenv>=1.0.1",
+    "langchain-neo4j==0.5.0",
+    "pandas==2.3.2",
+    "langchain-experimental==0.3.4",
+    "langchain-google-genai==2.1.10",
+    "openpyxl==3.1.5",
+    "graphiti-core[google-genai]>=0.20.3",
+    "pydantic>=2.0.0",
+    "langchain-core>=0.3.75",
+    "langgraph>=0.6.7",
+    "langchain-community>=0.3.28",
+    "langchain>=0.3.27",
+    "ragas>=0.3.5",
+    "langchain-openai>=0.3.33",
+    "langchain-tavily>=0.2.11",
+]

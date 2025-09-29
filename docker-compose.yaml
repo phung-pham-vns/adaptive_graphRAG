@@ -1,0 +1,21 @@
+services:
+  neo4j:
+    image: neo4j:latest
+    environment:
+      NEO4J_AUTH: neo4j/aisac_kg
+      NEO4JLABS_PLUGINS: '["apoc","graph-data-science"]'
+      NEO4J_dbms_security_procedures_unrestricted: 'gds.*,apoc.*'
+      NEO4J_dbms_security_procedures_allowlist: 'gds.*,apoc.*'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - v2_durian_pest_and_disease_neo4j_data:/data
+    healthcheck:
+      test: [ "CMD", "cypher-shell", "-u", "neo4j", "-p", "aisac_kg", "RETURN 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  v2_durian_pest_and_disease_neo4j_data:
