@@ -1,4 +1,8 @@
+from typing import Literal
+from pprint import pprint
+
 from langgraph.graph import END, StateGraph, START
+from langgraph.graph.state import CompiledStateGraph
 
 from src.core.functions import (
     GraphState,
@@ -14,34 +18,39 @@ from src.core.chains import (
     answer_grader,
     hallucination_grader,
 )
+from src.core.constants import BinaryScore, LogMessages, RouteDecision, Defaults
 
 
-async def route_question(state: GraphState) -> str:
+async def route_question(state: GraphState) -> Literal["web_search", "kg_retrieval"]:
     """Route the question to the appropriate data source."""
-    print("---ROUTE QUESTION---")
+    print(LogMessages.ROUTE_QUESTION)
     try:
         source = await question_router.ainvoke({"question": state["question"]})
         route = source.data_source
-        print(f"---ROUTE QUESTION TO {route.upper()}---")
+        print(LogMessages.ROUTE_TO.format(route.upper()))
         return route
     except Exception as e:
-        print(f"---ERROR IN ROUTING: {e}, DEFAULTING TO WEB SEARCH---")
-        return "web_search"
+        print(LogMessages.ERROR_IN.format("ROUTING", f"{e}, DEFAULTING TO WEB SEARCH"))
+        return RouteDecision.WEB_SEARCH
 
 
-async def decide_to_generate(state: GraphState) -> str:
+async def decide_to_generate(
+    state: GraphState,
+) -> Literal["query_transformation", "answer_generation"]:
     """Decide whether to generate an answer or transform the query."""
-    print("---ASSESS GRADED DOCUMENTS---")
+    print(LogMessages.ASSESS_GRADED_DOCUMENTS)
     if not state["node_contents"] and not state["edge_contents"]:
-        print("---DECISION: ALL DOCUMENTS ARE NOT RELEVANT, TRANSFORM QUERY---")
-        return "query_transformation"
-    print("---DECISION: GENERATE---")
-    return "answer_generation"
+        print(LogMessages.DECISION_ALL_DOCUMENTS_NOT_RELEVANT)
+        return RouteDecision.QUERY_TRANSFORMATION
+    print(LogMessages.DECISION_GENERATE)
+    return RouteDecision.ANSWER_GENERATION
 
 
-async def grade_generation_vs_context_and_question(state: GraphState) -> str:
+async def grade_generation_vs_context_and_question(
+    state: GraphState,
+) -> Literal["not_supported", "not_useful", "useful"]:
     """Check if the generated answer is grounded and addresses the question."""
-    print("---CHECK HALLUCINATIONS---")
+    print(LogMessages.CHECK_HALLUCINATIONS)
     try:
         node_contents = state.get("node_contents", None)
         edge_contents = state.get("edge_contents", None)
@@ -53,27 +62,27 @@ async def grade_generation_vs_context_and_question(state: GraphState) -> str:
         score = await hallucination_grader.ainvoke(
             {"documents": context, "generation": state["generation"]}
         )
-        if score.binary_score == "yes":
-            print("---DECISION: GENERATION IS GROUNDED IN DOCUMENTS---")
+        if score.binary_score == BinaryScore.YES:
+            print(LogMessages.DECISION_GROUNDED)
             score = await answer_grader.ainvoke(
                 {
                     "question": state["question"],
                     "generation": state["generation"],
                 }
             )
-            if score.binary_score == "yes":
-                print("---DECISION: GENERATION ADDRESSES QUESTION---")
-                return "useful"
-            print("---DECISION: GENERATION DOES NOT ADDRESS QUESTION---")
-            return "not_useful"
-        print("---DECISION: GENERATION IS NOT GROUNDED IN DOCUMENTS, RE-TRY---")
-        return "not_supported"
+            if score.binary_score == BinaryScore.YES:
+                print(LogMessages.DECISION_ADDRESSES_QUESTION)
+                return RouteDecision.USEFUL
+            print(LogMessages.DECISION_NOT_ADDRESSES_QUESTION)
+            return RouteDecision.NOT_USEFUL
+        print(LogMessages.DECISION_NOT_GROUNDED)
+        return RouteDecision.NOT_SUPPORTED
     except Exception as e:
-        print(f"---ERROR IN GENERATION GRADING: {e}---")
-        return "not_supported"
+        print(LogMessages.ERROR_IN.format("GENERATION GRADING", e))
+        return RouteDecision.NOT_SUPPORTED
 
 
-async def build_workflow() -> StateGraph:
+async def build_workflow() -> StateGraph[GraphState]:
     """Build and configure the LangGraph workflow."""
     workflow = StateGraph(GraphState)
 
@@ -89,8 +98,8 @@ async def build_workflow() -> StateGraph:
         START,
         route_question,
         {
-            "web_search": "web_search",
-            "kg_retrieval": "knowledge_graph_retrieval",
+            RouteDecision.WEB_SEARCH: "web_search",
+            RouteDecision.KG_RETRIEVAL: "knowledge_graph_retrieval",
         },
     )
     workflow.add_edge("web_search", "answer_generation")
@@ -99,8 +108,8 @@ async def build_workflow() -> StateGraph:
         "nodes_and_edges_grading",
         decide_to_generate,
         {
-            "query_transformation": "query_transformation",
-            "answer_generation": "answer_generation",
+            RouteDecision.QUERY_TRANSFORMATION: "query_transformation",
+            RouteDecision.ANSWER_GENERATION: "answer_generation",
         },
     )
     workflow.add_edge("query_transformation", "knowledge_graph_retrieval")
@@ -108,9 +117,9 @@ async def build_workflow() -> StateGraph:
         "answer_generation",
         grade_generation_vs_context_and_question,
         {
-            "not_supported": "answer_generation",
-            "not_useful": "query_transformation",
-            "useful": END,
+            RouteDecision.NOT_SUPPORTED: "answer_generation",
+            RouteDecision.NOT_USEFUL: "query_transformation",
+            RouteDecision.USEFUL: END,
         },
     )
 
@@ -119,8 +128,8 @@ async def build_workflow() -> StateGraph:
 
 async def run_workflow(
     question: str,
-    n_documents: int = 3,
-    n_requests: int = 3,
+    n_documents: int = Defaults.N_DOCUMENTS,
+    n_requests: int = Defaults.N_REQUESTS,
 ) -> None:
     """Run the workflow with the given question and document limit."""
     workflow = (await build_workflow()).compile()
@@ -154,8 +163,7 @@ async def run_workflow(
 # Example usage
 if __name__ == "__main__":
     import asyncio
-    from pprint import pprint
 
     # question = "My young durian leaves are curling and look scorched at the edges, could that be leafhopper damage and what should I do first?"
     question = "Where can I buy durian in Thailand?"
-    asyncio.run(run_workflow(question, n_documents=3))
+    asyncio.run(run_workflow(question, n_documents=Defaults.N_DOCUMENTS))

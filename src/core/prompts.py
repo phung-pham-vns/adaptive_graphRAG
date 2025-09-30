@@ -67,7 +67,7 @@ question_rewriting_prompt = ChatPromptTemplate.from_messages(
     ]
 )
 
-anwser_generation_prompt = ChatPromptTemplate.from_messages(
+answer_generation_prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",

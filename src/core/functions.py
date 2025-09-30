@@ -17,6 +17,7 @@ from src.core.chains import (
     hallucination_grader,
     answer_grader,
 )
+from src.core.constants import BinaryScore, LogMessages, Defaults
 
 
 class GraphState(TypedDict):
@@ -47,20 +48,20 @@ async def get_node_and_edge_contents(
 
 
 async def search_durian_pest_and_disease_knowledge(
-    question: str, limit: int = 3
+    question: str, limit: int = Defaults.N_DOCUMENTS
 ) -> tuple[list[str], list[str]]:
     """Search knowledge graph for durian pest and disease information."""
     try:
         graphiti = await GraphitiClient().create_client(
             clear_existing_graphdb_data=False,
-            max_coroutines=1,
+            max_coroutines=Defaults.MAX_COROUTINES,
         )
         search_type = COMBINED_HYBRID_SEARCH_CROSS_ENCODER.model_copy(deep=True)
         search_type.limit = limit
         results = await graphiti.search_(query=question, config=search_type)
         return await get_node_and_edge_contents(results)
     except Exception as e:
-        print(f"---ERROR IN KNOWLEDGE GRAPH SEARCH: {e}---")
+        print(LogMessages.ERROR_IN.format("KNOWLEDGE GRAPH SEARCH", e))
         return [], []
 
 
@@ -70,47 +71,41 @@ def format_context(
     web_contents: list[str],
     web_citations: list[dict[str, str]],
 ) -> str:
-    """Format node and edge contents into a single string."""
-    context = ""
+    """Format node, edge, web contents, and citations into a single context string."""
+    context_parts = []
+
+    def _format_list(items: list, title: str) -> str:
+        """Helper to format a list of items with numbering."""
+        formatted = "\n".join(f"{i + 1}. {item}" for i, item in enumerate(items))
+        return f"{title}:\n{formatted}\n"
+
     if node_contents:
-        nodes_content = "\n".join(
-            f"{i + 1}. {node}" for i, node in enumerate(node_contents)
-        )
-        context += f"Node Information:\n{nodes_content}\n"
+        context_parts.append(_format_list(node_contents, "Node Information"))
 
     if edge_contents:
-        edges_content = "\n".join(
-            f"{i + 1}. {edge}" for i, edge in enumerate(edge_contents)
-        )
-        context += f"Relationship Information:\n{edges_content}\n"
+        context_parts.append(_format_list(edge_contents, "Relationship Information"))
 
     if web_contents:
-        web_content = "\n".join(
-            f"{i + 1}. {content}" for i, content in enumerate(web_contents)
-        )
-        context += f"Web Information:\n{web_content}\n"
+        context_parts.append(_format_list(web_contents, "Web Information"))
 
     if web_citations:
-        web_citations = "\n".join(
-            f"{i + 1}. {citation}" for i, citation in enumerate(web_citations)
-        )
-        context += f"Web Citations:\n{web_citations}\n"
+        context_parts.append(_format_list(web_citations, "Web Citations"))
 
-    return context
+    return "".join(context_parts)
 
 
 async def knowledge_graph_retrieval(state: GraphState) -> dict:
     """Retrieve nodes and edges from the knowledge graph."""
-    print("---KNOWLEDGE GRAPH RETRIEVAL---")
+    print(LogMessages.KNOWLEDGE_GRAPH_RETRIEVAL)
     node_contents, edge_contents = await search_durian_pest_and_disease_knowledge(
-        question=state["question"], limit=state.get("n_documents", 3)
+        question=state["question"], limit=state.get("n_documents", Defaults.N_DOCUMENTS)
     )
     return {"node_contents": node_contents, "edge_contents": edge_contents}
 
 
 async def answer_generation(state: GraphState) -> dict:
     """Generate an answer using the provided context and question."""
-    print("---ANSWER GENERATION---")
+    print(LogMessages.ANSWER_GENERATION)
     node_contents = state.get("node_contents", None)
     edge_contents = state.get("edge_contents", None)
     web_contents = state.get("web_contents", None)
@@ -122,13 +117,13 @@ async def answer_generation(state: GraphState) -> dict:
         )
         return {"generation": generation.answer, "web_citations": web_citations}
     except Exception as e:
-        print(f"---ERROR IN ANSWER GENERATION: {e}---")
+        print(LogMessages.ERROR_IN.format("ANSWER GENERATION", e))
         return {"generation": "", "web_citations": web_citations}
 
 
 async def nodes_and_edges_grading(state: GraphState) -> dict:
     """Grade the relevance of node and edge contents."""
-    print("---CHECK DOCUMENT RELEVANCE TO QUESTION---")
+    print(LogMessages.CHECK_DOCUMENT_RELEVANCE)
     question = state["question"]
 
     async def filter_contents(contents: list[str], content_type: str) -> list[str]:
@@ -140,14 +135,14 @@ async def nodes_and_edges_grading(state: GraphState) -> dict:
         filtered = []
         for content, score in zip(contents, scores):
             if isinstance(score, Exception):
-                print(f"---ERROR GRADING {content_type.upper()} CONTENT: {score}---")
+                print(LogMessages.ERROR_GRADING.format(content_type.upper(), score))
                 continue
             grade = score.binary_score
-            print(
-                f"---GRADE: {content_type.upper()} CONTENT {'RELEVANT' if grade == 'yes' else 'NOT RELEVANT'}---"
-            )
-            if grade == "yes":
+            if grade == BinaryScore.YES:
+                print(LogMessages.GRADE_RELEVANT.format(content_type.upper()))
                 filtered.append(content)
+            else:
+                print(LogMessages.GRADE_NOT_RELEVANT.format(content_type.upper()))
         return filtered
 
     node_contents = await filter_contents(state["node_contents"], "NODE")
@@ -158,23 +153,22 @@ async def nodes_and_edges_grading(state: GraphState) -> dict:
 
 async def query_transformation(state: GraphState) -> dict:
     """Transform the query for better retrieval."""
-    print("---QUERY TRANSFORMATION---")
+    print(LogMessages.QUERY_TRANSFORMATION)
     try:
         refined = await question_rewriter.ainvoke({"question": state["question"]})
         return {"question": refined.refined_question}
     except Exception as e:
-        print(f"---ERROR IN QUERY TRANSFORMATION: {e}---")
+        print(LogMessages.ERROR_IN.format("QUERY TRANSFORMATION", e))
         return {"question": state["question"]}
 
 
 async def web_search(state: GraphState) -> dict:
     """Perform a web search to gather relevant content."""
-    print("---WEB SEARCH---")
-    web_search_tool = TavilySearch(max_results=state.get("n_requests", 3))
+    print(LogMessages.WEB_SEARCH)
+    web_search_tool = TavilySearch(
+        max_results=state.get("n_requests", Defaults.N_REQUESTS)
+    )
     try:
-        import pdb
-
-        pdb.set_trace()
         search_results = await web_search_tool.ainvoke({"query": state["question"]})
         search_contents = [result["content"] for result in search_results["results"]]
         search_citations = [
@@ -183,5 +177,5 @@ async def web_search(state: GraphState) -> dict:
         ]
         return {"web_contents": search_contents, "web_citations": search_citations}
     except Exception as e:
-        print(f"---ERROR IN WEB SEARCH: {e}---")
+        print(LogMessages.ERROR_IN.format("WEB SEARCH", e))
         return {"web_contents": [], "web_citations": []}
