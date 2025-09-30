@@ -30,6 +30,7 @@ class GraphState(TypedDict):
     n_requests: int
     web_citations: list[dict[str, str]]
     kg_citations: list[dict[str, str]]
+    retry_count: int
 
 
 async def get_node_and_edge_contents(
@@ -154,12 +155,16 @@ async def nodes_and_edges_grading(state: GraphState) -> dict:
 async def query_transformation(state: GraphState) -> dict:
     """Transform the query for better retrieval."""
     print(LogMessages.QUERY_TRANSFORMATION)
+    current_retry = state.get("retry_count", 0)
+    print(
+        LogMessages.RETRY_COUNT_INFO.format(current_retry + 1, Defaults.MAX_RETRY_COUNT)
+    )
     try:
         refined = await question_rewriter.ainvoke({"question": state["question"]})
-        return {"question": refined.refined_question}
+        return {"question": refined.refined_question, "retry_count": current_retry + 1}
     except Exception as e:
         print(LogMessages.ERROR_IN.format("QUERY TRANSFORMATION", e))
-        return {"question": state["question"]}
+        return {"question": state["question"], "retry_count": current_retry + 1}
 
 
 async def web_search(state: GraphState) -> dict:

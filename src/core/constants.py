@@ -53,6 +53,8 @@ class LogMessages:
     DECISION_NOT_ADDRESSES_QUESTION = (
         "---DECISION: GENERATION DOES NOT ADDRESS QUESTION---"
     )
+    MAX_RETRIES_REACHED = "---MAX RETRIES REACHED: {}/{}. FALLING BACK TO {}---"
+    RETRY_COUNT_INFO = "---RETRY COUNT: {}/{}---"
 
 
 # Default configuration values
@@ -62,3 +64,4 @@ class Defaults:
     N_DOCUMENTS = 3
     N_REQUESTS = 3
     MAX_COROUTINES = 1
+    MAX_RETRY_COUNT = 3  # Maximum number of query transformation retries

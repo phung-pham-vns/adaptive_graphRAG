@@ -36,12 +36,26 @@ async def route_question(state: GraphState) -> Literal["web_search", "kg_retriev
 
 async def decide_to_generate(
     state: GraphState,
-) -> Literal["query_transformation", "answer_generation"]:
-    """Decide whether to generate an answer or transform the query."""
+) -> Literal["query_transformation", "answer_generation", "web_search"]:
+    """Decide whether to generate an answer, transform the query, or fallback to web search."""
     print(LogMessages.ASSESS_GRADED_DOCUMENTS)
+
+    # Check if we have relevant documents
     if not state["node_contents"] and not state["edge_contents"]:
         print(LogMessages.DECISION_ALL_DOCUMENTS_NOT_RELEVANT)
+
+        # Check retry count to prevent infinite loops
+        current_retry = state.get("retry_count", 0)
+        if current_retry >= Defaults.MAX_RETRY_COUNT:
+            print(
+                LogMessages.MAX_RETRIES_REACHED.format(
+                    current_retry, Defaults.MAX_RETRY_COUNT, "WEB SEARCH"
+                )
+            )
+            return RouteDecision.WEB_SEARCH
+
         return RouteDecision.QUERY_TRANSFORMATION
+
     print(LogMessages.DECISION_GENERATE)
     return RouteDecision.ANSWER_GENERATION
 
@@ -73,6 +87,18 @@ async def grade_generation_vs_context_and_question(
             if score.binary_score == BinaryScore.YES:
                 print(LogMessages.DECISION_ADDRESSES_QUESTION)
                 return RouteDecision.USEFUL
+
+            # Check retry count before looping back to query_transformation
+            current_retry = state.get("retry_count", 0)
+            if current_retry >= Defaults.MAX_RETRY_COUNT:
+                print(
+                    LogMessages.MAX_RETRIES_REACHED.format(
+                        current_retry, Defaults.MAX_RETRY_COUNT, "END (BEST EFFORT)"
+                    )
+                )
+                # Return as useful to end workflow with best effort answer
+                return RouteDecision.USEFUL
+
             print(LogMessages.DECISION_NOT_ADDRESSES_QUESTION)
             return RouteDecision.NOT_USEFUL
         print(LogMessages.DECISION_NOT_GROUNDED)
@@ -110,6 +136,7 @@ async def build_workflow() -> StateGraph[GraphState]:
         {
             RouteDecision.QUERY_TRANSFORMATION: "query_transformation",
             RouteDecision.ANSWER_GENERATION: "answer_generation",
+            RouteDecision.WEB_SEARCH: "web_search",
         },
     )
     workflow.add_edge("query_transformation", "knowledge_graph_retrieval")
@@ -141,6 +168,7 @@ async def run_workflow(
         "edge_contents": [],
         "web_contents": [],
         "web_citations": [],
+        "retry_count": 0,
     }
     try:
         async for output in workflow.astream(inputs):
@@ -165,5 +193,9 @@ if __name__ == "__main__":
     import asyncio
 
     # question = "My young durian leaves are curling and look scorched at the edges, could that be leafhopper damage and what should I do first?"
-    question = "Where can I buy durian in Thailand?"
+    # question = "Where can I buy durian in Thailand?"
+    # question = "If I only see a few durian scales on some twigs, should I spray the whole block?"
+    # question = "What’s a good rule for rotating insecticides when dealing with psyllids or leafhoppers?"
+    # question = "Leaves show powdery white patches—what durian disease could this be?"
+    question = "Which longhorn borer treatments are suitable for large limbs and trunk?"
     asyncio.run(run_workflow(question, n_documents=Defaults.N_DOCUMENTS))
