@@ -65,3 +65,7 @@ class Defaults:
     N_REQUESTS = 3
     MAX_COROUTINES = 1
     MAX_RETRY_COUNT = 3  # Maximum number of query transformation retries
+
+    # Workflow optimization flags
+    ENABLE_DOCUMENT_GRADING = True  # Enable nodes and edges grading
+    ENABLE_GENERATION_GRADING = True  # Enable hallucination and answer quality checking

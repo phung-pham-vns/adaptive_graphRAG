@@ -108,16 +108,27 @@ async def grade_generation_vs_context_and_question(
         return RouteDecision.NOT_SUPPORTED
 
 
-async def build_workflow() -> StateGraph[GraphState]:
-    """Build and configure the LangGraph workflow."""
+async def build_workflow(
+    enable_document_grading: bool = Defaults.ENABLE_DOCUMENT_GRADING,
+    enable_generation_grading: bool = Defaults.ENABLE_GENERATION_GRADING,
+) -> StateGraph[GraphState]:
+    """Build and configure the LangGraph workflow with optional optimization flags.
+
+    Args:
+        enable_document_grading: If True, grade retrieved documents for relevance
+        enable_generation_grading: If True, check generated answers for hallucinations and quality
+    """
     workflow = StateGraph(GraphState)
 
     # Add nodes
     workflow.add_node("web_search", web_search)
     workflow.add_node("knowledge_graph_retrieval", knowledge_graph_retrieval)
-    workflow.add_node("nodes_and_edges_grading", nodes_and_edges_grading)
     workflow.add_node("answer_generation", answer_generation)
     workflow.add_node("query_transformation", query_transformation)
+
+    # Conditionally add grading nodes
+    if enable_document_grading:
+        workflow.add_node("nodes_and_edges_grading", nodes_and_edges_grading)
 
     # Define edges
     workflow.add_conditional_edges(
@@ -129,26 +140,41 @@ async def build_workflow() -> StateGraph[GraphState]:
         },
     )
     workflow.add_edge("web_search", "answer_generation")
-    workflow.add_edge("knowledge_graph_retrieval", "nodes_and_edges_grading")
-    workflow.add_conditional_edges(
-        "nodes_and_edges_grading",
-        decide_to_generate,
-        {
-            RouteDecision.QUERY_TRANSFORMATION: "query_transformation",
-            RouteDecision.ANSWER_GENERATION: "answer_generation",
-            RouteDecision.WEB_SEARCH: "web_search",
-        },
-    )
+
+    # Configure KG retrieval flow based on document grading flag
+    if enable_document_grading:
+        # With grading: KG → grading → decide → answer/transform
+        workflow.add_edge("knowledge_graph_retrieval", "nodes_and_edges_grading")
+        workflow.add_conditional_edges(
+            "nodes_and_edges_grading",
+            decide_to_generate,
+            {
+                RouteDecision.QUERY_TRANSFORMATION: "query_transformation",
+                RouteDecision.ANSWER_GENERATION: "answer_generation",
+                RouteDecision.WEB_SEARCH: "web_search",
+            },
+        )
+    else:
+        # Without grading: KG → answer directly
+        workflow.add_edge("knowledge_graph_retrieval", "answer_generation")
+
     workflow.add_edge("query_transformation", "knowledge_graph_retrieval")
-    workflow.add_conditional_edges(
-        "answer_generation",
-        grade_generation_vs_context_and_question,
-        {
-            RouteDecision.NOT_SUPPORTED: "answer_generation",
-            RouteDecision.NOT_USEFUL: "query_transformation",
-            RouteDecision.USEFUL: END,
-        },
-    )
+
+    # Configure answer generation flow based on generation grading flag
+    if enable_generation_grading:
+        # With grading: check quality and retry if needed
+        workflow.add_conditional_edges(
+            "answer_generation",
+            grade_generation_vs_context_and_question,
+            {
+                RouteDecision.NOT_SUPPORTED: "answer_generation",
+                RouteDecision.NOT_USEFUL: "query_transformation",
+                RouteDecision.USEFUL: END,
+            },
+        )
+    else:
+        # Without grading: answer directly ends workflow
+        workflow.add_edge("answer_generation", END)
 
     return workflow
 
@@ -157,9 +183,16 @@ async def run_workflow(
     question: str,
     n_documents: int = Defaults.N_DOCUMENTS,
     n_requests: int = Defaults.N_REQUESTS,
+    enable_document_grading: bool = Defaults.ENABLE_DOCUMENT_GRADING,
+    enable_generation_grading: bool = Defaults.ENABLE_GENERATION_GRADING,
 ) -> None:
-    """Run the workflow with the given question and document limit."""
-    workflow = (await build_workflow()).compile()
+    """Run the workflow with the given question and configuration options."""
+    workflow = (
+        await build_workflow(
+            enable_document_grading=enable_document_grading,
+            enable_generation_grading=enable_generation_grading,
+        )
+    ).compile()
     inputs = {
         "question": question,
         "n_documents": n_documents,
