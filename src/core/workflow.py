@@ -231,6 +231,10 @@ async def run_workflow(
     question: str,
     n_retrieved_documents: int = Defaults.N_RETRIEVED_DOCUMENTS,
     n_web_searches: int = Defaults.N_WEB_SEARCHES,
+    node_retrieval: bool = Defaults.NODE_RETRIEVAL,
+    edge_retrieval: bool = Defaults.EDGE_RETRIEVAL,
+    episode_retrieval: bool = Defaults.EPISODE_RETRIEVAL,
+    community_retrieval: bool = Defaults.COMMUNITY_RETRIEVAL,
     enable_retrieved_document_grading: bool = Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
     enable_generation_grading: bool = Defaults.ENABLE_GENERATION_GRADING,
 ) -> None:
@@ -245,6 +249,10 @@ async def run_workflow(
         "question": question,
         "n_retrieved_documents": n_retrieved_documents,
         "n_web_searches": n_web_searches,
+        "node_retrieval": node_retrieval,
+        "edge_retrieval": edge_retrieval,
+        "episode_retrieval": episode_retrieval,
+        "community_retrieval": community_retrieval,
         "node_contents": [],
         "edge_contents": [],
         "web_contents": [],
@@ -285,5 +293,11 @@ if __name__ == "__main__":
             question,
             n_retrieved_documents=Defaults.N_RETRIEVED_DOCUMENTS,
             n_web_searches=Defaults.N_WEB_SEARCHES,
+            node_retrieval=Defaults.NODE_RETRIEVAL,
+            edge_retrieval=Defaults.EDGE_RETRIEVAL,
+            episode_retrieval=Defaults.EPISODE_RETRIEVAL,
+            community_retrieval=Defaults.COMMUNITY_RETRIEVAL,
+            enable_retrieved_document_grading=Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
+            enable_generation_grading=Defaults.ENABLE_GENERATION_GRADING,
         )
     )

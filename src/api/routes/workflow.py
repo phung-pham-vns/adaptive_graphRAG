@@ -45,6 +45,10 @@ async def run_workflow_internal(
     question: str,
     n_documents: int,
     n_requests: int,
+    node_retrieval: bool,
+    edge_retrieval: bool,
+    episode_retrieval: bool,
+    community_retrieval: bool,
     enable_retrieved_document_grading: bool,
     enable_generation_grading: bool,
 ) -> Dict[str, Any]:
@@ -66,8 +70,12 @@ async def run_workflow_internal(
 
     inputs = {
         "question": question,
-        "n_documents": n_documents,
-        "n_requests": n_requests,
+        "n_retrieved_documents": n_documents,
+        "n_web_searches": n_requests,
+        "node_retrieval": node_retrieval,
+        "edge_retrieval": edge_retrieval,
+        "episode_retrieval": episode_retrieval,
+        "community_retrieval": community_retrieval,
         "node_contents": [],
         "edge_contents": [],
         "web_contents": [],
@@ -202,9 +210,13 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
     ```json
     {
         "question": "What causes durian leaf curl?",
-        "n_documents": 3,
-        "n_requests": 3,
-        "enable_retrieved_document_grading": true,
+        "n_retrieved_documents": 3,
+        "n_web_searches": 3,
+        "node_retrieval": true,
+        "edge_retrieval": true,
+        "episode_retrieval": true,
+        "community_retrieval": true,
+        "enable_retrieved_documents_grading": true,
         "enable_generation_grading": true
     }
     ```
@@ -215,6 +227,10 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
             question=request.question,
             n_documents=request.n_retrieved_documents,
             n_requests=request.n_web_searches,
+            node_retrieval=request.node_retrieval,
+            edge_retrieval=request.edge_retrieval,
+            episode_retrieval=request.episode_retrieval,
+            community_retrieval=request.community_retrieval,
             enable_retrieved_document_grading=request.enable_retrieved_documents_grading,
             enable_generation_grading=request.enable_generation_grading,
         )
@@ -232,6 +248,10 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
             metadata={
                 "n_retrieved_documents": request.n_retrieved_documents,
                 "n_web_searches": request.n_web_searches,
+                "node_retrieval": request.node_retrieval,
+                "edge_retrieval": request.edge_retrieval,
+                "episode_retrieval": request.episode_retrieval,
+                "community_retrieval": request.community_retrieval,
                 "document_grading_enabled": request.enable_retrieved_documents_grading,
                 "generation_grading_enabled": request.enable_generation_grading,
                 "total_steps": len(result["workflow_steps"]),
@@ -294,6 +314,10 @@ async def run_workflow_simple(request: WorkflowRequest) -> Dict[str, str]:
             question=request.question,
             n_documents=request.n_retrieved_documents,
             n_requests=request.n_web_searches,
+            node_retrieval=request.node_retrieval,
+            edge_retrieval=request.edge_retrieval,
+            episode_retrieval=request.episode_retrieval,
+            community_retrieval=request.community_retrieval,
             enable_retrieved_document_grading=request.enable_retrieved_documents_grading,
             enable_generation_grading=request.enable_generation_grading,
         )

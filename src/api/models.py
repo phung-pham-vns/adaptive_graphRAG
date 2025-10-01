@@ -21,6 +21,22 @@ class WorkflowRequest(BaseModel):
     n_web_searches: int = Field(
         default=3, ge=1, le=10, description="Number of web searches to fetch"
     )
+    node_retrieval: bool = Field(
+        default=True,
+        description="Enable node retrieval from knowledge graph",
+    )
+    edge_retrieval: bool = Field(
+        default=True,
+        description="Enable edge retrieval from knowledge graph",
+    )
+    episode_retrieval: bool = Field(
+        default=True,
+        description="Enable episode retrieval from knowledge graph",
+    )
+    community_retrieval: bool = Field(
+        default=True,
+        description="Enable community retrieval from knowledge graph",
+    )
     enable_retrieved_documents_grading: bool = Field(
         default=True,
         description="Enable document relevance grading (slower but higher quality)",

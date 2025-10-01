@@ -56,8 +56,8 @@ class Defaults:
     N_WEB_SEARCHES = 3
     NODE_RETRIEVAL = True
     EDGE_RETRIEVAL = True
-    EPISODE_RETRIEVAL = True
-    COMMUNITY_RETRIEVAL = True
+    EPISODE_RETRIEVAL = False
+    COMMUNITY_RETRIEVAL = False
     MAX_COROUTINES = 1
     MAX_RETRY_COUNT = 3  # Maximum number of query transformation retries
     ENABLE_RETRIEVED_DOCUMENTS_GRADING = True  # Enable retrieved documents grading
