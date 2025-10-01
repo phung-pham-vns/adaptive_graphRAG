@@ -318,7 +318,10 @@ if __name__ == "__main__":
     # question = "If I only see a few durian scales on some twigs, should I spray the whole block?"
     # question = "What’s a good rule for rotating insecticides when dealing with psyllids or leafhoppers?"
     # question = "Leaves show powdery white patches—what durian disease could this be?"
-    question = "Which longhorn borer treatments are suitable for large limbs and trunk?"
+    # question = "Which longhorn borer treatments are suitable for large limbs and trunk?"
+    question = (
+        "Which symptoms help me distinguish leafhopper damage from nutrient burn?"
+    )
     asyncio.run(
         run_workflow(
             question,
