@@ -11,10 +11,10 @@ class RouteDecision:
     LLM_INTERNAL = "llm_internal"
     QUERY_TRANSFORMATION = "query_transformation"
     ANSWER_GENERATION = "answer_generation"
-    USEFUL = "useful"
-    NOT_USEFUL = "not_useful"
-    NOT_SUPPORTED = "not_supported"
-    SUPPORTED = "supported"
+    CORRECT = "correct"
+    INCORRECT = "incorrect"
+    NOT_GROUNDED = "not_grounded"
+    GROUNDED = "grounded"
 
 
 # Log messages

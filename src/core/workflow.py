@@ -70,7 +70,7 @@ async def decide_to_generate(
 
 async def grade_generation_and_context(
     state: GraphState,
-) -> Literal["not_supported", "supported"]:
+) -> Literal["not_grounded", "grounded"]:
     """Check if the generated answer is grounded in the context.
 
     Performs hallucination check: Is answer grounded in context?
@@ -80,27 +80,36 @@ async def grade_generation_and_context(
         node_contents = state.get("node_contents", None)
         edge_contents = state.get("edge_contents", None)
         web_contents = state.get("web_contents", None)
-        citations = state.get("citations", None)
-        context = format_context(node_contents, edge_contents, web_contents, citations)
+        node_citations = state.get("node_citations", None)
+        edge_citations = state.get("edge_citations", None)
+        web_citations = state.get("web_citations", None)
+        context = format_context(
+            node_contents,
+            edge_contents,
+            web_contents,
+            node_citations,
+            edge_citations,
+            web_citations,
+        )
         hallucination_score = await hallucination_grader.ainvoke(
             {"documents": context, "generation": state["generation"]}
         )
 
         if hallucination_score.binary_score != BinaryScore.YES:
             print(LogMessages.DECISION_NOT_GROUNDED)
-            return RouteDecision.NOT_SUPPORTED
+            return RouteDecision.NOT_GROUNDED
 
         print(LogMessages.DECISION_GROUNDED)
-        return RouteDecision.SUPPORTED
+        return RouteDecision.GROUNDED
 
     except Exception as e:
         print(LogMessages.ERROR_IN.format("HALLUCINATION GRADING", e))
-        return RouteDecision.NOT_SUPPORTED
+        return RouteDecision.NOT_GROUNDED
 
 
 async def grade_generation_and_question(
     state: GraphState,
-) -> Literal["not_useful", "useful"]:
+) -> Literal["incorrect", "correct"]:
     """Check if the generated answer addresses the question.
 
     Performs answer quality check: Does answer address the question?
@@ -116,7 +125,7 @@ async def grade_generation_and_question(
 
         if answer_score.binary_score == BinaryScore.YES:
             print(LogMessages.DECISION_ADDRESSES_QUESTION)
-            return RouteDecision.USEFUL
+            return RouteDecision.CORRECT
 
         # Check retry count before looping back to query_transformation
         current_retry = state.get("retry_count", 0)
@@ -126,16 +135,16 @@ async def grade_generation_and_question(
                     current_retry, Defaults.MAX_RETRY_COUNT, "END (BEST EFFORT)"
                 )
             )
-            # Return as useful to end workflow with best effort answer
-            return RouteDecision.USEFUL
+            # Return as corect to end workflow with best effort answer
+            return RouteDecision.CORRECT
 
         print(LogMessages.DECISION_NOT_ADDRESSES_QUESTION)
-        return RouteDecision.NOT_USEFUL
+        return RouteDecision.INCORRECT
 
     except Exception as e:
         print(LogMessages.ERROR_IN.format("ANSWER QUALITY GRADING", e))
-        # On error, return useful to end workflow with best effort answer
-        return RouteDecision.USEFUL
+        # On error, return corect to end workflow with best effort answer
+        return RouteDecision.CORRECT
 
 
 async def build_workflow(
@@ -206,8 +215,8 @@ async def build_workflow(
             "answer_generation",
             grade_generation_and_context,
             {
-                RouteDecision.NOT_SUPPORTED: "answer_generation",  # Retry generation if hallucinating
-                RouteDecision.SUPPORTED: "answer_quality_check",  # Check answer quality if grounded
+                RouteDecision.NOT_GROUNDED: "answer_generation",  # Retry generation if hallucinating
+                RouteDecision.GROUNDED: "answer_quality_check",  # Check answer quality if grounded
             },
         )
 
@@ -216,8 +225,8 @@ async def build_workflow(
             "answer_quality_check",
             grade_generation_and_question,
             {
-                RouteDecision.NOT_USEFUL: "query_transformation",  # Transform query if not useful
-                RouteDecision.USEFUL: END,  # End if useful
+                RouteDecision.INCORRECT: "query_transformation",  # Transform query if not useful
+                RouteDecision.CORRECT: END,  # End if useful
             },
         )
     else:
@@ -264,15 +273,8 @@ async def run_workflow(
             for key, value in output.items():
                 pprint(f"Node '{key.upper()}'")
 
-        if "generation" in value:
-            pprint(f"Final Answer: {value['generation']}")
-        else:
-            pprint("No final answer generated.")
-
-        if "citations" in value:
-            pprint(f"Citations: {value['citations']}")
-        else:
-            pprint("No citations.")
+        pprint(f"Final Answer: {value.get('generation', 'No final answer generated.')}")
+        pprint(f"Citations: {value.get('citations', 'No citations.')}")
 
     except Exception as e:
         pprint(f"Error during workflow execution: {e}")
