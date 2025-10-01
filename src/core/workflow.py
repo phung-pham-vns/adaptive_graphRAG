@@ -11,6 +11,7 @@ from src.core.functions import (
     nodes_and_edges_grading,
     query_transformation,
     answer_generation,
+    llm_internal_answer,
 )
 from src.core.chains import (
     question_router,
@@ -20,7 +21,9 @@ from src.core.chains import (
 from src.core.constants import BinaryScore, LogMessages, RouteDecision, Defaults
 
 
-async def route_question(state: GraphState) -> Literal["web_search", "kg_retrieval"]:
+async def route_question(
+    state: GraphState,
+) -> Literal["web_search", "kg_retrieval", "llm_internal"]:
     """Route the question to the appropriate data source."""
     print(LogMessages.ROUTE_QUESTION)
     try:
@@ -29,8 +32,10 @@ async def route_question(state: GraphState) -> Literal["web_search", "kg_retriev
         print(LogMessages.ROUTE_TO.format(route.upper()))
         return route
     except Exception as e:
-        print(LogMessages.ERROR_IN.format("ROUTING", f"{e}, DEFAULTING TO WEB SEARCH"))
-        return RouteDecision.WEB_SEARCH
+        print(
+            LogMessages.ERROR_IN.format("ROUTING", f"{e}, DEFAULTING TO LLM INTERNAL")
+        )
+        return RouteDecision.LLM_INTERNAL
 
 
 async def decide_to_generate(
@@ -144,6 +149,7 @@ async def build_workflow(
     workflow.add_node("knowledge_graph_retrieval", knowledge_graph_retrieval)
     workflow.add_node("answer_generation", answer_generation)
     workflow.add_node("query_transformation", query_transformation)
+    workflow.add_node("llm_internal_answer", llm_internal_answer)
 
     # Conditionally add grading nodes
     if enable_document_grading:
@@ -159,9 +165,13 @@ async def build_workflow(
         {
             RouteDecision.WEB_SEARCH: "web_search",
             RouteDecision.KG_RETRIEVAL: "knowledge_graph_retrieval",
+            RouteDecision.LLM_INTERNAL: "llm_internal_answer",
         },
     )
     workflow.add_edge("web_search", "answer_generation")
+    workflow.add_edge(
+        "llm_internal_answer", END
+    )  # LLM internal answer goes directly to END
 
     # Configure KG retrieval flow based on document grading flag
     if enable_document_grading:

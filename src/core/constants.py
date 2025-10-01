@@ -17,6 +17,7 @@ class RouteDecision:
 
     WEB_SEARCH = "web_search"
     KG_RETRIEVAL = "kg_retrieval"
+    LLM_INTERNAL = "llm_internal"
     QUERY_TRANSFORMATION = "query_transformation"
     ANSWER_GENERATION = "answer_generation"
     USEFUL = "useful"
@@ -33,6 +34,7 @@ class LogMessages:
     ROUTE_TO = "[..] ROUTE QUESTION TO {}"
     WEB_SEARCH = "[..] WEB SEARCH"
     KNOWLEDGE_GRAPH_RETRIEVAL = "[..] KNOWLEDGE GRAPH RETRIEVAL"
+    LLM_INTERNAL_ANSWER = "[..] LLM INTERNAL ANSWER (OUT OF DOMAIN)"
     ANSWER_GENERATION = "[..] ANSWER GENERATION"
     CHECK_DOCUMENT_RELEVANCE = "[..] CHECK DOCUMENT RELEVANCE TO QUESTION"
     QUERY_TRANSFORMATION = "[..] QUERY TRANSFORMATION"

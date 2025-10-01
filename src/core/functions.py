@@ -11,6 +11,7 @@ from src.core.graphiti import GraphitiClient
 
 from src.core.chains import (
     answer_generator,
+    llm_internal_answer_generator,
     question_rewriter,
     question_router,
     retrieval_grader,
@@ -184,3 +185,18 @@ async def web_search(state: GraphState) -> dict:
     except Exception as e:
         print(LogMessages.ERROR_IN.format("WEB SEARCH", e))
         return {"web_contents": [], "web_citations": []}
+
+
+async def llm_internal_answer(state: GraphState) -> dict:
+    """Generate an answer using LLM's internal knowledge (for out-of-domain questions)."""
+    print(LogMessages.LLM_INTERNAL_ANSWER)
+    try:
+        generation = await llm_internal_answer_generator.ainvoke(
+            {"question": state["question"]}
+        )
+        return {"generation": generation.answer}
+    except Exception as e:
+        print(LogMessages.ERROR_IN.format("LLM INTERNAL ANSWER", e))
+        return {
+            "generation": "I apologize, but I'm unable to answer that question at the moment."
+        }

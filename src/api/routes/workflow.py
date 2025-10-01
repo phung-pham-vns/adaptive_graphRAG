@@ -181,8 +181,11 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
     Run the adaptive RAG workflow with the provided question.
 
     This endpoint:
-    - Routes the question to knowledge graph or web search
-    - Retrieves relevant documents
+    - Intelligently routes the question to one of three sources:
+        * **Knowledge Graph**: Domain-specific durian pest/disease questions
+        * **Web Search**: Latest pest/disease information
+        * **LLM Internal**: Out-of-domain questions (no retrieval needed)
+    - Retrieves relevant documents (for KG and Web routes)
     - Optionally grades documents for relevance (if `enable_document_grading=true`)
     - Generates an answer
     - Optionally checks answer quality via two-step process (if `enable_generation_grading=true`):

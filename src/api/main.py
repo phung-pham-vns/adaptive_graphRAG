@@ -42,14 +42,18 @@ app = FastAPI(
     
     This API provides intelligent question-answering capabilities using:
     - **Knowledge Graph Retrieval**: Domain-specific knowledge about durian pests and diseases
-    - **Web Search Fallback**: Real-time web information when KG doesn't have answers
-    - **Adaptive Routing**: Automatically chooses the best data source
+    - **Web Search**: Real-time web information for latest pest/disease updates
+    - **LLM Internal Knowledge**: Direct LLM answers for out-of-domain questions
+    - **Smart Routing**: Automatically chooses the best data source based on question type
     - **Two-Stage Quality Control**: Optional document relevance and generation quality grading
     - **Citation Tracking**: Provides sources for all answers
     
     ## Features
     
-    - 🔄 **Adaptive Workflow**: Routes questions to optimal data source
+    - 🔄 **3-Way Adaptive Routing**: 
+      * Knowledge Graph for domain-specific durian pest/disease questions
+      * Web Search for latest pest/disease information
+      * LLM Internal for out-of-domain questions (general knowledge, greetings, etc.)
     - ⚡ **Performance Optimization**: Toggle quality checks for faster responses
     - 📚 **Source Citations**: Track where information comes from
     - 🔍 **Document Grading**: Optional relevance checking of retrieved documents
@@ -65,7 +69,7 @@ app = FastAPI(
     ## Quick Start
     
     ```bash
-    # Full workflow with details
+    # Domain question (routes to Knowledge Graph)
     curl -X POST "http://localhost:8000/workflow/run" \\
       -H "Content-Type: application/json" \\
       -d '{
@@ -75,10 +79,15 @@ app = FastAPI(
         "enable_generation_grading": true
       }'
     
-    # Simple question-answer
+    # Latest information question (routes to Web Search)
     curl -X POST "http://localhost:8000/workflow/run-simple" \\
       -H "Content-Type: application/json" \\
-      -d '{"question": "What causes durian leaf curl?"}'
+      -d '{"question": "What are the latest news about durian pests?"}'
+    
+    # Out-of-domain question (routes to LLM Internal)
+    curl -X POST "http://localhost:8000/workflow/run-simple" \\
+      -H "Content-Type: application/json" \\
+      -d '{"question": "What is the capital of France?"}'
     ```
     
     ## Performance Tips
@@ -88,6 +97,20 @@ app = FastAPI(
     - For **highest quality** (~12-15s): Enable all options (default)
     
     ## Workflow Details
+    
+    ### Intelligent Routing
+    
+    The system automatically routes questions to the optimal source:
+    
+    1. **Knowledge Graph** → Durian pest/disease domain questions
+       - Examples: "What causes leaf curl?", "How to treat stem borers?"
+       
+    2. **Web Search** → Latest pest/disease information
+       - Examples: "Latest durian pest news?", "New treatment methods?"
+       
+    3. **LLM Internal** → Out-of-domain questions
+       - Examples: "Hello!", "What is Paris?", "Explain machine learning"
+       - Fast response, no retrieval overhead
     
     ### Generation Grading (Two-Step Process)
     

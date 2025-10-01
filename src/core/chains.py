@@ -7,6 +7,7 @@ from src.core.prompts import (
     answer_grading_prompt,
     question_rewriting_prompt,
     answer_generation_prompt,
+    llm_internal_answer_prompt,
 )
 from src.core.schema import (
     RouteQuery,
@@ -36,3 +37,6 @@ question_rewriter = question_rewriting_prompt | llm.with_structured_output(
     QueryRefinement
 )
 answer_generator = answer_generation_prompt | llm.with_structured_output(GenerateAnswer)
+llm_internal_answer_generator = llm_internal_answer_prompt | llm.with_structured_output(
+    GenerateAnswer
+)
