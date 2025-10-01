@@ -300,39 +300,178 @@ async def run_workflow(
     try:
         async for output in workflow.astream(inputs):
             for key, value in output.items():
-                pprint(f"Node '{key.upper()}'")
-
-        pprint(f"Final Answer: {value.get('generation', 'No final answer generated.')}")
-        pprint(f"Citations: {value.get('citations', 'No citations.')}")
+                print(f"Node '{key.upper()}'")
+        print("=" * 80)
+        print(f"Final Answer: {value.get('generation', 'No final answer generated.')}")
+        print(f"Citations:")
+        citations = value.get("citations", [])
+        for citation in citations:
+            print(f"  - Title: {citation.get('title')}")
+            print(f"  - URL: {citation.get('url', None)}")
+        print("=" * 80)
+        print()
 
     except Exception as e:
-        pprint(f"Error during workflow execution: {e}")
+        print(f"Error during workflow execution: {e}")
 
 
 # Example usage
 if __name__ == "__main__":
     import asyncio
+    import argparse
 
-    # question = "My young durian leaves are curling and look scorched at the edges, could that be leafhopper damage and what should I do first?"
-    # question = "Where can I buy durian in Thailand?"
-    # question = "If I only see a few durian scales on some twigs, should I spray the whole block?"
-    # question = "What’s a good rule for rotating insecticides when dealing with psyllids or leafhoppers?"
-    # question = "Leaves show powdery white patches—what durian disease could this be?"
-    # question = "Which longhorn borer treatments are suitable for large limbs and trunk?"
-    question = (
-        "Which symptoms help me distinguish leafhopper damage from nutrient burn?"
+    parser = argparse.ArgumentParser(
+        description="Run the Adaptive RAG workflow with custom configuration"
     )
+
+    # Required argument
+    parser.add_argument(
+        "-q",
+        "--question",
+        type=str,
+        required=True,
+        help="The question to ask the adaptive RAG system",
+    )
+
+    # Retrieval parameters
+    parser.add_argument(
+        "--n-retrieved-documents",
+        type=int,
+        default=Defaults.N_RETRIEVED_DOCUMENTS,
+        help=f"Number of documents to retrieve from knowledge graph (default: {Defaults.N_RETRIEVED_DOCUMENTS})",
+    )
+    parser.add_argument(
+        "--n-web-searches",
+        type=int,
+        default=Defaults.N_WEB_SEARCHES,
+        help=f"Number of web search results to fetch (default: {Defaults.N_WEB_SEARCHES})",
+    )
+
+    # Knowledge graph retrieval types
+    parser.add_argument(
+        "--node-retrieval",
+        action="store_true",
+        default=Defaults.NODE_RETRIEVAL,
+        help="Enable node retrieval from knowledge graph",
+    )
+    parser.add_argument(
+        "--no-node-retrieval",
+        dest="node_retrieval",
+        action="store_false",
+        help="Disable node retrieval from knowledge graph",
+    )
+    parser.add_argument(
+        "--edge-retrieval",
+        action="store_true",
+        default=Defaults.EDGE_RETRIEVAL,
+        help="Enable edge retrieval from knowledge graph",
+    )
+    parser.add_argument(
+        "--no-edge-retrieval",
+        dest="edge_retrieval",
+        action="store_false",
+        help="Disable edge retrieval from knowledge graph",
+    )
+    parser.add_argument(
+        "--episode-retrieval",
+        action="store_true",
+        default=Defaults.EPISODE_RETRIEVAL,
+        help="Enable episode retrieval from knowledge graph",
+    )
+    parser.add_argument(
+        "--no-episode-retrieval",
+        dest="episode_retrieval",
+        action="store_false",
+        help="Disable episode retrieval from knowledge graph",
+    )
+    parser.add_argument(
+        "--community-retrieval",
+        action="store_true",
+        default=Defaults.COMMUNITY_RETRIEVAL,
+        help="Enable community retrieval from knowledge graph",
+    )
+    parser.add_argument(
+        "--no-community-retrieval",
+        dest="community_retrieval",
+        action="store_false",
+        help="Disable community retrieval from knowledge graph",
+    )
+
+    # Quality control options
+    parser.add_argument(
+        "--enable-document-grading",
+        dest="enable_retrieved_document_grading",
+        action="store_true",
+        default=Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
+        help="Enable retrieved documents grading for relevance",
+    )
+    parser.add_argument(
+        "--no-document-grading",
+        dest="enable_retrieved_document_grading",
+        action="store_false",
+        help="Disable retrieved documents grading",
+    )
+    parser.add_argument(
+        "--enable-hallucination-check",
+        dest="enable_hallucination_checking",
+        action="store_true",
+        default=Defaults.ENABLE_HALLUCINATION_CHECKING,
+        help="Enable hallucination checking to verify answer is grounded in context",
+    )
+    parser.add_argument(
+        "--no-hallucination-check",
+        dest="enable_hallucination_checking",
+        action="store_false",
+        help="Disable hallucination checking",
+    )
+    parser.add_argument(
+        "--enable-quality-check",
+        dest="enable_answer_quality_checking",
+        action="store_true",
+        default=Defaults.ENABLE_ANSWER_QUALITY_CHECKING,
+        help="Enable answer quality checking to verify answer addresses the question",
+    )
+    parser.add_argument(
+        "--no-quality-check",
+        dest="enable_answer_quality_checking",
+        action="store_false",
+        help="Disable answer quality checking",
+    )
+
+    # Parse arguments
+    args = parser.parse_args()
+
+    # Print configuration
+    print("=" * 80)
+    print("ADAPTIVE RAG WORKFLOW")
+    print("=" * 80)
+    print(f"Question: {args.question}")
+    print(f"\nRetrieval Configuration:")
+    print(f"  - Documents to retrieve: {args.n_retrieved_documents}")
+    print(f"  - Web searches: {args.n_web_searches}")
+    print(f"  - Node retrieval: {args.node_retrieval}")
+    print(f"  - Edge retrieval: {args.edge_retrieval}")
+    print(f"  - Episode retrieval: {args.episode_retrieval}")
+    print(f"  - Community retrieval: {args.community_retrieval}")
+    print(f"\nQuality Control:")
+    print(f"  - Document grading: {args.enable_retrieved_document_grading}")
+    print(f"  - Hallucination checking: {args.enable_hallucination_checking}")
+    print(f"  - Answer quality checking: {args.enable_answer_quality_checking}")
+    print("=" * 80)
+    print()
+
+    # Run workflow
     asyncio.run(
         run_workflow(
-            question,
-            n_retrieved_documents=Defaults.N_RETRIEVED_DOCUMENTS,
-            n_web_searches=Defaults.N_WEB_SEARCHES,
-            node_retrieval=Defaults.NODE_RETRIEVAL,
-            edge_retrieval=Defaults.EDGE_RETRIEVAL,
-            episode_retrieval=Defaults.EPISODE_RETRIEVAL,
-            community_retrieval=Defaults.COMMUNITY_RETRIEVAL,
-            enable_retrieved_document_grading=Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
-            enable_hallucination_checking=Defaults.ENABLE_HALLUCINATION_CHECKING,
-            enable_answer_quality_checking=Defaults.ENABLE_ANSWER_QUALITY_CHECKING,
+            question=args.question,
+            n_retrieved_documents=args.n_retrieved_documents,
+            n_web_searches=args.n_web_searches,
+            node_retrieval=args.node_retrieval,
+            edge_retrieval=args.edge_retrieval,
+            episode_retrieval=args.episode_retrieval,
+            community_retrieval=args.community_retrieval,
+            enable_retrieved_document_grading=args.enable_retrieved_document_grading,
+            enable_hallucination_checking=args.enable_hallucination_checking,
+            enable_answer_quality_checking=args.enable_answer_quality_checking,
         )
     )
