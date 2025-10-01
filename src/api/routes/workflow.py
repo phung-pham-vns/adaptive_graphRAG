@@ -183,15 +183,22 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
     This endpoint:
     - Routes the question to knowledge graph or web search
     - Retrieves relevant documents
-    - Optionally grades documents for relevance
+    - Optionally grades documents for relevance (if `enable_document_grading=true`)
     - Generates an answer
-    - Optionally checks answer quality
+    - Optionally checks answer quality via two-step process (if `enable_generation_grading=true`):
+        1. Hallucination check: Verifies answer is grounded in context
+        2. Answer quality check: Validates answer addresses the question
     - Returns the answer with citations and workflow steps
 
     **Performance Optimization:**
     - Set `enable_document_grading=false` to skip document filtering (~2s faster)
-    - Set `enable_generation_grading=false` to skip quality checks (~3-5s faster)
+    - Set `enable_generation_grading=false` to skip both quality checks (~3-5s faster)
     - Both disabled = maximum speed (~5-7s faster) but lower quality
+
+    **Generation Grading Details:**
+    When enabled, the workflow performs two independent checks:
+    - **Hallucination Detection**: If answer is not grounded → regenerate
+    - **Answer Quality**: If answer doesn't address question → transform query and retry
 
     **Example Request:**
     ```json

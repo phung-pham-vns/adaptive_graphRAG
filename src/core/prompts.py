@@ -6,7 +6,21 @@ question_routing_prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            """You are an expert at routing a user question to a knowledge graph retrieval or web search. The knowledge graph contains documents related to durian pest and disease. Use knowledge graph retrieval for these topics. Otherwise, use web search.""",
+            """You are an expert at routing a user question to a knowledge graph retrieval or web search. The knowledge graph contains documents related to durian pest and disease and use knowledge graph retrieval for retrieving information related to these topics. Otherwise, use web search for searching latest information related to pest and disease.
+
+            Example:
+            Question: What are the latest news about durian pest and disease?
+            Answer: web_search
+
+            Question: The latest way to treat durian pest and disease?
+            Answer: web_search
+
+            Question: My young durian leaves are curling and look scorched at the edges—could that be leafhopper damage and what should I do first?
+            Answer: kg_retrieval
+
+            Question: There’s fine sawdust-like powder on my durian trunk—what borer could it be and what’s the first step?
+            Answer: kg_retrieval
+            """,
         ),
         (
             "human",

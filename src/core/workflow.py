@@ -2,7 +2,6 @@ from typing import Literal
 from pprint import pprint
 
 from langgraph.graph import END, StateGraph, START
-from langgraph.graph.state import CompiledStateGraph
 
 from src.core.functions import (
     GraphState,
@@ -60,10 +59,10 @@ async def decide_to_generate(
     return RouteDecision.ANSWER_GENERATION
 
 
-async def grade_generation_vs_context_and_question(
+async def grade_generation_and_context(
     state: GraphState,
-) -> Literal["not_supported", "not_useful", "useful"]:
-    """Check if the generated answer is grounded and addresses the question."""
+) -> Literal["not_supported", "supported"]:
+    """Check if the generated answer is grounded in the retrieved context."""
     print(LogMessages.CHECK_HALLUCINATIONS)
     try:
         node_contents = state.get("node_contents", None)
@@ -78,34 +77,54 @@ async def grade_generation_vs_context_and_question(
         )
         if score.binary_score == BinaryScore.YES:
             print(LogMessages.DECISION_GROUNDED)
-            score = await answer_grader.ainvoke(
-                {
-                    "question": state["question"],
-                    "generation": state["generation"],
-                }
-            )
-            if score.binary_score == BinaryScore.YES:
-                print(LogMessages.DECISION_ADDRESSES_QUESTION)
-                return RouteDecision.USEFUL
+            return RouteDecision.SUPPORTED
 
-            # Check retry count before looping back to query_transformation
-            current_retry = state.get("retry_count", 0)
-            if current_retry >= Defaults.MAX_RETRY_COUNT:
-                print(
-                    LogMessages.MAX_RETRIES_REACHED.format(
-                        current_retry, Defaults.MAX_RETRY_COUNT, "END (BEST EFFORT)"
-                    )
-                )
-                # Return as useful to end workflow with best effort answer
-                return RouteDecision.USEFUL
-
-            print(LogMessages.DECISION_NOT_ADDRESSES_QUESTION)
-            return RouteDecision.NOT_USEFUL
         print(LogMessages.DECISION_NOT_GROUNDED)
         return RouteDecision.NOT_SUPPORTED
     except Exception as e:
-        print(LogMessages.ERROR_IN.format("GENERATION GRADING", e))
+        print(LogMessages.ERROR_IN.format("HALLUCINATION GRADING", e))
         return RouteDecision.NOT_SUPPORTED
+
+
+async def check_answer_quality(state: GraphState) -> GraphState:
+    """Node that performs answer quality checking (for workflow execution)."""
+    # This node doesn't modify state, it just exists for the workflow graph
+    return state
+
+
+async def grade_generation_and_question(
+    state: GraphState,
+) -> Literal["not_useful", "useful"]:
+    """Decision function to check if the generated answer addresses the question."""
+    print(LogMessages.CHECK_ANSWER_QUALITY)
+    try:
+        score = await answer_grader.ainvoke(
+            {
+                "question": state["question"],
+                "generation": state["generation"],
+            }
+        )
+        if score.binary_score == BinaryScore.YES:
+            print(LogMessages.DECISION_ADDRESSES_QUESTION)
+            return RouteDecision.USEFUL
+
+        # Check retry count before looping back to query_transformation
+        current_retry = state.get("retry_count", 0)
+        if current_retry >= Defaults.MAX_RETRY_COUNT:
+            print(
+                LogMessages.MAX_RETRIES_REACHED.format(
+                    current_retry, Defaults.MAX_RETRY_COUNT, "END (BEST EFFORT)"
+                )
+            )
+            # Return as useful to end workflow with best effort answer
+            return RouteDecision.USEFUL
+
+        print(LogMessages.DECISION_NOT_ADDRESSES_QUESTION)
+        return RouteDecision.NOT_USEFUL
+    except Exception as e:
+        print(LogMessages.ERROR_IN.format("ANSWER QUALITY GRADING", e))
+        # On error, return useful to end workflow with best effort answer
+        return RouteDecision.USEFUL
 
 
 async def build_workflow(
@@ -129,6 +148,9 @@ async def build_workflow(
     # Conditionally add grading nodes
     if enable_document_grading:
         workflow.add_node("nodes_and_edges_grading", nodes_and_edges_grading)
+
+    if enable_generation_grading:
+        workflow.add_node("check_answer_quality", check_answer_quality)
 
     # Define edges
     workflow.add_conditional_edges(
@@ -162,14 +184,21 @@ async def build_workflow(
 
     # Configure answer generation flow based on generation grading flag
     if enable_generation_grading:
-        # With grading: check quality and retry if needed
+        # With grading: check hallucination first, then answer quality
         workflow.add_conditional_edges(
             "answer_generation",
-            grade_generation_vs_context_and_question,
+            grade_generation_and_context,
             {
-                RouteDecision.NOT_SUPPORTED: "answer_generation",
-                RouteDecision.NOT_USEFUL: "query_transformation",
-                RouteDecision.USEFUL: END,
+                RouteDecision.NOT_SUPPORTED: "answer_generation",  # Retry generation if hallucinating
+                RouteDecision.SUPPORTED: "check_answer_quality",  # Check answer quality if grounded
+            },
+        )
+        workflow.add_conditional_edges(
+            "check_answer_quality",
+            grade_generation_and_question,
+            {
+                RouteDecision.NOT_USEFUL: "query_transformation",  # Transform query if not useful
+                RouteDecision.USEFUL: END,  # End if useful
             },
         )
     else:
@@ -207,6 +236,7 @@ async def run_workflow(
         async for output in workflow.astream(inputs):
             for key, value in output.items():
                 pprint(f"Node '{key.upper()}'")
+
         if "generation" in value:
             pprint(f"Final Answer: {value['generation']}")
         else:

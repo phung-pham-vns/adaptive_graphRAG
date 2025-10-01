@@ -7,7 +7,7 @@ from graphiti_core.search.search_config_recipes import (
     COMBINED_HYBRID_SEARCH_CROSS_ENCODER,
 )
 from graphiti_core.search.search_config import SearchResults
-from src.core.graphiti_client import GraphitiClient
+from src.core.graphiti import GraphitiClient
 
 from src.core.chains import (
     answer_generator,

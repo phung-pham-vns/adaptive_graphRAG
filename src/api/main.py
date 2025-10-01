@@ -44,7 +44,7 @@ app = FastAPI(
     - **Knowledge Graph Retrieval**: Domain-specific knowledge about durian pests and diseases
     - **Web Search Fallback**: Real-time web information when KG doesn't have answers
     - **Adaptive Routing**: Automatically chooses the best data source
-    - **Quality Control**: Optional document and answer quality grading
+    - **Two-Stage Quality Control**: Optional document relevance and generation quality grading
     - **Citation Tracking**: Provides sources for all answers
     
     ## Features
@@ -52,7 +52,8 @@ app = FastAPI(
     - 🔄 **Adaptive Workflow**: Routes questions to optimal data source
     - ⚡ **Performance Optimization**: Toggle quality checks for faster responses
     - 📚 **Source Citations**: Track where information comes from
-    - 🔍 **Quality Grading**: Optional relevance and hallucination checking
+    - 🔍 **Document Grading**: Optional relevance checking of retrieved documents
+    - 🎯 **Generation Grading**: Two-step validation (hallucination check → answer quality check)
     - 🔄 **Auto-Retry**: Query transformation when results are poor
     
     ## Endpoints
@@ -83,8 +84,25 @@ app = FastAPI(
     ## Performance Tips
     
     - For **fastest responses** (~5-7s): Disable both grading options
-    - For **balanced performance** (~10s): Disable document grading only
+    - For **balanced performance** (~10s): Enable document grading, disable generation grading
     - For **highest quality** (~12-15s): Enable all options (default)
+    
+    ## Workflow Details
+    
+    ### Generation Grading (Two-Step Process)
+    
+    When `enable_generation_grading=true`, answers go through:
+    
+    1. **Hallucination Check** (`grade_generation_and_context`):
+       - Verifies answer is grounded in retrieved context
+       - If not grounded → regenerates answer
+       
+    2. **Answer Quality Check** (`grade_generation_and_question`):
+       - Validates answer addresses the question
+       - If not useful → transforms query and retries
+       - If useful → returns final answer
+    
+    This two-stage approach provides granular quality control and better debugging capabilities.
     """,
     version="0.1.0",
     lifespan=lifespan,
