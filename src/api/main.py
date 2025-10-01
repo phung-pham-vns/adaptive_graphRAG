@@ -112,20 +112,20 @@ app = FastAPI(
        - Examples: "Hello!", "What is Paris?", "Explain machine learning"
        - Fast response, no retrieval overhead
     
-    ### Generation Grading (Two-Step Process)
+    ### Generation Grading (Combined Two-Step Process)
     
-    When `enable_generation_grading=true`, answers go through:
+    When `enable_generation_grading=true`, answers go through sequential checks in one decision point:
     
-    1. **Hallucination Check** (`grade_generation_and_context`):
+    1. **Hallucination Check**:
        - Verifies answer is grounded in retrieved context
        - If not grounded → regenerates answer
        
-    2. **Answer Quality Check** (`grade_generation_and_question`):
+    2. **Answer Quality Check** (only if grounded):
        - Validates answer addresses the question
        - If not useful → transforms query and retries
        - If useful → returns final answer
     
-    This two-stage approach provides granular quality control and better debugging capabilities.
+    Both checks run sequentially without intermediate nodes, providing efficient quality control.
     """,
     version="0.1.0",
     lifespan=lifespan,
@@ -177,10 +177,7 @@ async def root():
 )
 async def health_check() -> HealthResponse:
     """Health check endpoint."""
-    return HealthResponse(
-        status="healthy",
-        version="0.1.0",
-    )
+    return HealthResponse(status="healthy", version="0.1.0")
 
 
 @app.exception_handler(Exception)

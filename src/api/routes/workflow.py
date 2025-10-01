@@ -45,7 +45,7 @@ async def run_workflow_internal(
     question: str,
     n_documents: int,
     n_requests: int,
-    enable_document_grading: bool,
+    enable_retrieved_document_grading: bool,
     enable_generation_grading: bool,
 ) -> Dict[str, Any]:
     """Run the workflow and track execution with timing."""
@@ -59,7 +59,7 @@ async def run_workflow_internal(
 
     workflow = (
         await build_workflow(
-            enable_document_grading=enable_document_grading,
+            enable_retrieved_document_grading=enable_retrieved_document_grading,
             enable_generation_grading=enable_generation_grading,
         )
     ).compile()
@@ -71,7 +71,7 @@ async def run_workflow_internal(
         "node_contents": [],
         "edge_contents": [],
         "web_contents": [],
-        "web_citations": [],
+        "citations": [],
         "retry_count": 0,
     }
 
@@ -112,19 +112,14 @@ async def run_workflow_internal(
 
         # Extract citations
         if final_state:
-            web_citations = final_state.get("web_citations", [])
-            for citation in web_citations:
+            citations = final_state.get("citations", [])
+            for citation in citations:
                 _current_citations.append(
                     {
-                        "type": "web",
                         "title": citation.get("title", ""),
                         "url": citation.get("url", ""),
                     }
                 )
-
-            kg_citations = final_state.get("kg_citations", [])
-            for citation in kg_citations:
-                _current_citations.append({"type": "kg", "content": citation})
 
         answer = (
             final_state.get("generation", "No answer generated.")
@@ -186,22 +181,22 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
         * **Web Search**: Latest pest/disease information
         * **LLM Internal**: Out-of-domain questions (no retrieval needed)
     - Retrieves relevant documents (for KG and Web routes)
-    - Optionally grades documents for relevance (if `enable_document_grading=true`)
+    - Optionally grades documents for relevance (if `enable_retrieved_document_grading=true`)
     - Generates an answer
-    - Optionally checks answer quality via two-step process (if `enable_generation_grading=true`):
+    - Optionally checks answer quality via combined two-step process (if `enable_generation_grading=true`):
         1. Hallucination check: Verifies answer is grounded in context
-        2. Answer quality check: Validates answer addresses the question
+        2. Answer quality check: Validates answer addresses the question (only runs if grounded)
     - Returns the answer with citations and workflow steps
 
     **Performance Optimization:**
-    - Set `enable_document_grading=false` to skip document filtering (~2s faster)
+    - Set `enable_retrieved_document_grading=false` to skip document filtering (~2s faster)
     - Set `enable_generation_grading=false` to skip both quality checks (~3-5s faster)
     - Both disabled = maximum speed (~5-7s faster) but lower quality
 
     **Generation Grading Details:**
-    When enabled, the workflow performs two independent checks:
+    When enabled, the workflow performs two sequential checks in one decision point:
     - **Hallucination Detection**: If answer is not grounded → regenerate
-    - **Answer Quality**: If answer doesn't address question → transform query and retry
+    - **Answer Quality**: If grounded but doesn't address question → transform query and retry
 
     **Example Request:**
     ```json
@@ -209,7 +204,7 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
         "question": "What causes durian leaf curl?",
         "n_documents": 3,
         "n_requests": 3,
-        "enable_document_grading": true,
+        "enable_retrieved_document_grading": true,
         "enable_generation_grading": true
     }
     ```
@@ -218,9 +213,9 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
         # Run the workflow
         result = await run_workflow_internal(
             question=request.question,
-            n_documents=request.n_documents,
-            n_requests=request.n_requests,
-            enable_document_grading=request.enable_document_grading,
+            n_documents=request.n_retrieved_documents,
+            n_requests=request.n_web_searches,
+            enable_retrieved_document_grading=request.enable_retrieved_documents_grading,
             enable_generation_grading=request.enable_generation_grading,
         )
 
@@ -235,9 +230,9 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
             workflow_steps=[WorkflowStep(**step) for step in result["workflow_steps"]],
             citations=[Citation(**citation) for citation in result["citations"]],
             metadata={
-                "n_documents": request.n_documents,
-                "n_requests": request.n_requests,
-                "document_grading_enabled": request.enable_document_grading,
+                "n_retrieved_documents": request.n_retrieved_documents,
+                "n_web_searches": request.n_web_searches,
+                "document_grading_enabled": request.enable_retrieved_documents_grading,
                 "generation_grading_enabled": request.enable_generation_grading,
                 "total_steps": len(result["workflow_steps"]),
                 "total_citations": len(result["citations"]),
@@ -297,9 +292,9 @@ async def run_workflow_simple(request: WorkflowRequest) -> Dict[str, str]:
     try:
         result = await run_workflow_internal(
             question=request.question,
-            n_documents=request.n_documents,
-            n_requests=request.n_requests,
-            enable_document_grading=request.enable_document_grading,
+            n_documents=request.n_retrieved_documents,
+            n_requests=request.n_web_searches,
+            enable_retrieved_document_grading=request.enable_retrieved_documents_grading,
             enable_generation_grading=request.enable_generation_grading,
         )
 

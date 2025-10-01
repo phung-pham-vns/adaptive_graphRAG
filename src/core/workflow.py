@@ -8,10 +8,9 @@ from src.core.functions import (
     format_context,
     web_search,
     knowledge_graph_retrieval,
-    nodes_and_edges_grading,
+    retrieved_documents_grading,
     query_transformation,
     answer_generation,
-    llm_internal_answer,
 )
 from src.core.chains import (
     question_router,
@@ -23,19 +22,24 @@ from src.core.constants import BinaryScore, LogMessages, RouteDecision, Defaults
 
 async def route_question(
     state: GraphState,
-) -> Literal["web_search", "kg_retrieval", "llm_internal"]:
+) -> Literal["web_search", "kg_retrieval", "answer_generation"]:
     """Route the question to the appropriate data source."""
     print(LogMessages.ROUTE_QUESTION)
     try:
         source = await question_router.ainvoke({"question": state["question"]})
         route = source.data_source
         print(LogMessages.ROUTE_TO.format(route.upper()))
+        # If llm_internal, route directly to answer_generation (with no context)
+        if route == RouteDecision.LLM_INTERNAL:
+            return RouteDecision.ANSWER_GENERATION
         return route
     except Exception as e:
         print(
-            LogMessages.ERROR_IN.format("ROUTING", f"{e}, DEFAULTING TO LLM INTERNAL")
+            LogMessages.ERROR_IN.format(
+                "ROUTING", f"{e}, DEFAULTING TO ANSWER GENERATION"
+            )
         )
-        return RouteDecision.LLM_INTERNAL
+        return RouteDecision.ANSWER_GENERATION
 
 
 async def decide_to_generate(
@@ -67,49 +71,50 @@ async def decide_to_generate(
 async def grade_generation_and_context(
     state: GraphState,
 ) -> Literal["not_supported", "supported"]:
-    """Check if the generated answer is grounded in the retrieved context."""
+    """Check if the generated answer is grounded in the context.
+
+    Performs hallucination check: Is answer grounded in context?
+    """
     print(LogMessages.CHECK_HALLUCINATIONS)
     try:
         node_contents = state.get("node_contents", None)
         edge_contents = state.get("edge_contents", None)
         web_contents = state.get("web_contents", None)
-        web_citations = state.get("web_citations", None)
-        context = format_context(
-            node_contents, edge_contents, web_contents, web_citations
-        )
-        score = await hallucination_grader.ainvoke(
+        citations = state.get("citations", None)
+        context = format_context(node_contents, edge_contents, web_contents, citations)
+        hallucination_score = await hallucination_grader.ainvoke(
             {"documents": context, "generation": state["generation"]}
         )
-        if score.binary_score == BinaryScore.YES:
-            print(LogMessages.DECISION_GROUNDED)
-            return RouteDecision.SUPPORTED
 
-        print(LogMessages.DECISION_NOT_GROUNDED)
-        return RouteDecision.NOT_SUPPORTED
+        if hallucination_score.binary_score != BinaryScore.YES:
+            print(LogMessages.DECISION_NOT_GROUNDED)
+            return RouteDecision.NOT_SUPPORTED
+
+        print(LogMessages.DECISION_GROUNDED)
+        return RouteDecision.SUPPORTED
+
     except Exception as e:
         print(LogMessages.ERROR_IN.format("HALLUCINATION GRADING", e))
         return RouteDecision.NOT_SUPPORTED
 
 
-async def check_answer_quality(state: GraphState) -> GraphState:
-    """Node that performs answer quality checking (for workflow execution)."""
-    # This node doesn't modify state, it just exists for the workflow graph
-    return state
-
-
 async def grade_generation_and_question(
     state: GraphState,
 ) -> Literal["not_useful", "useful"]:
-    """Decision function to check if the generated answer addresses the question."""
+    """Check if the generated answer addresses the question.
+
+    Performs answer quality check: Does answer address the question?
+    """
     print(LogMessages.CHECK_ANSWER_QUALITY)
     try:
-        score = await answer_grader.ainvoke(
+        answer_score = await answer_grader.ainvoke(
             {
                 "question": state["question"],
                 "generation": state["generation"],
             }
         )
-        if score.binary_score == BinaryScore.YES:
+
+        if answer_score.binary_score == BinaryScore.YES:
             print(LogMessages.DECISION_ADDRESSES_QUESTION)
             return RouteDecision.USEFUL
 
@@ -126,6 +131,7 @@ async def grade_generation_and_question(
 
         print(LogMessages.DECISION_NOT_ADDRESSES_QUESTION)
         return RouteDecision.NOT_USEFUL
+
     except Exception as e:
         print(LogMessages.ERROR_IN.format("ANSWER QUALITY GRADING", e))
         # On error, return useful to end workflow with best effort answer
@@ -133,13 +139,13 @@ async def grade_generation_and_question(
 
 
 async def build_workflow(
-    enable_document_grading: bool = Defaults.ENABLE_DOCUMENT_GRADING,
+    enable_retrieved_document_grading: bool = Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
     enable_generation_grading: bool = Defaults.ENABLE_GENERATION_GRADING,
 ) -> StateGraph[GraphState]:
     """Build and configure the LangGraph workflow with optional optimization flags.
 
     Args:
-        enable_document_grading: If True, grade retrieved documents for relevance
+        enable_retrieved_document_grading: If True, grade retrieved documents for relevance
         enable_generation_grading: If True, check generated answers for hallucinations and quality
     """
     workflow = StateGraph(GraphState)
@@ -149,14 +155,10 @@ async def build_workflow(
     workflow.add_node("knowledge_graph_retrieval", knowledge_graph_retrieval)
     workflow.add_node("answer_generation", answer_generation)
     workflow.add_node("query_transformation", query_transformation)
-    workflow.add_node("llm_internal_answer", llm_internal_answer)
 
     # Conditionally add grading nodes
-    if enable_document_grading:
-        workflow.add_node("nodes_and_edges_grading", nodes_and_edges_grading)
-
-    if enable_generation_grading:
-        workflow.add_node("check_answer_quality", check_answer_quality)
+    if enable_retrieved_document_grading:
+        workflow.add_node("retrieved_documents_grading", retrieved_documents_grading)
 
     # Define edges
     workflow.add_conditional_edges(
@@ -165,20 +167,17 @@ async def build_workflow(
         {
             RouteDecision.WEB_SEARCH: "web_search",
             RouteDecision.KG_RETRIEVAL: "knowledge_graph_retrieval",
-            RouteDecision.LLM_INTERNAL: "llm_internal_answer",
+            RouteDecision.ANSWER_GENERATION: "answer_generation",  # LLM internal routes here with no context
         },
     )
     workflow.add_edge("web_search", "answer_generation")
-    workflow.add_edge(
-        "llm_internal_answer", END
-    )  # LLM internal answer goes directly to END
 
     # Configure KG retrieval flow based on document grading flag
-    if enable_document_grading:
+    if enable_retrieved_document_grading:
         # With grading: KG → grading → decide → answer/transform
-        workflow.add_edge("knowledge_graph_retrieval", "nodes_and_edges_grading")
+        workflow.add_edge("knowledge_graph_retrieval", "retrieved_documents_grading")
         workflow.add_conditional_edges(
-            "nodes_and_edges_grading",
+            "retrieved_documents_grading",
             decide_to_generate,
             {
                 RouteDecision.QUERY_TRANSFORMATION: "query_transformation",
@@ -195,16 +194,26 @@ async def build_workflow(
     # Configure answer generation flow based on generation grading flag
     if enable_generation_grading:
         # With grading: check hallucination first, then answer quality
+        # Add a passthrough node for answer quality checking
+        async def answer_quality_check(state: GraphState) -> GraphState:
+            """Passthrough node for answer quality checking routing."""
+            return state
+
+        workflow.add_node("answer_quality_check", answer_quality_check)
+
+        # First check: Is generation grounded in context?
         workflow.add_conditional_edges(
             "answer_generation",
             grade_generation_and_context,
             {
                 RouteDecision.NOT_SUPPORTED: "answer_generation",  # Retry generation if hallucinating
-                RouteDecision.SUPPORTED: "check_answer_quality",  # Check answer quality if grounded
+                RouteDecision.SUPPORTED: "answer_quality_check",  # Check answer quality if grounded
             },
         )
+
+        # Second check: Does generation address the question?
         workflow.add_conditional_edges(
-            "check_answer_quality",
+            "answer_quality_check",
             grade_generation_and_question,
             {
                 RouteDecision.NOT_USEFUL: "query_transformation",  # Transform query if not useful
@@ -220,26 +229,26 @@ async def build_workflow(
 
 async def run_workflow(
     question: str,
-    n_documents: int = Defaults.N_DOCUMENTS,
-    n_requests: int = Defaults.N_REQUESTS,
-    enable_document_grading: bool = Defaults.ENABLE_DOCUMENT_GRADING,
+    n_retrieved_documents: int = Defaults.N_RETRIEVED_DOCUMENTS,
+    n_web_searches: int = Defaults.N_WEB_SEARCHES,
+    enable_retrieved_document_grading: bool = Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
     enable_generation_grading: bool = Defaults.ENABLE_GENERATION_GRADING,
 ) -> None:
     """Run the workflow with the given question and configuration options."""
     workflow = (
         await build_workflow(
-            enable_document_grading=enable_document_grading,
+            enable_retrieved_document_grading=enable_retrieved_document_grading,
             enable_generation_grading=enable_generation_grading,
         )
     ).compile()
     inputs = {
         "question": question,
-        "n_documents": n_documents,
-        "n_requests": n_requests,
+        "n_retrieved_documents": n_retrieved_documents,
+        "n_web_searches": n_web_searches,
         "node_contents": [],
         "edge_contents": [],
         "web_contents": [],
-        "web_citations": [],
+        "citations": [],
         "retry_count": 0,
     }
     try:
@@ -252,10 +261,10 @@ async def run_workflow(
         else:
             pprint("No final answer generated.")
 
-        if "web_citations" in value:
-            pprint(f"Web Citations: {value['web_citations']}")
+        if "citations" in value:
+            pprint(f"Citations: {value['citations']}")
         else:
-            pprint("No web citations.")
+            pprint("No citations.")
 
     except Exception as e:
         pprint(f"Error during workflow execution: {e}")
@@ -271,4 +280,10 @@ if __name__ == "__main__":
     # question = "What’s a good rule for rotating insecticides when dealing with psyllids or leafhoppers?"
     # question = "Leaves show powdery white patches—what durian disease could this be?"
     question = "Which longhorn borer treatments are suitable for large limbs and trunk?"
-    asyncio.run(run_workflow(question, n_documents=Defaults.N_DOCUMENTS))
+    asyncio.run(
+        run_workflow(
+            question,
+            n_retrieved_documents=Defaults.N_RETRIEVED_DOCUMENTS,
+            n_web_searches=Defaults.N_WEB_SEARCHES,
+        )
+    )

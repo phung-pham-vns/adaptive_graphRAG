@@ -1,5 +1,3 @@
-"""Pydantic models for API request/response."""
-
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
@@ -14,16 +12,16 @@ class WorkflowRequest(BaseModel):
         max_length=2000,
         examples=["What causes durian leaf curl?"],
     )
-    n_documents: int = Field(
+    n_retrieved_documents: int = Field(
         default=3,
         ge=1,
         le=10,
-        description="Number of documents to retrieve from knowledge graph",
+        description="Number of retrieved documents to retrieve from knowledge graph",
     )
-    n_requests: int = Field(
-        default=3, ge=1, le=10, description="Number of web search results to fetch"
+    n_web_searches: int = Field(
+        default=3, ge=1, le=10, description="Number of web searches to fetch"
     )
-    enable_document_grading: bool = Field(
+    enable_retrieved_documents_grading: bool = Field(
         default=True,
         description="Enable document relevance grading (slower but higher quality)",
     )
@@ -49,7 +47,6 @@ class WorkflowStep(BaseModel):
 class Citation(BaseModel):
     """Model for a source citation."""
 
-    type: str = Field(..., description="Type of citation: 'web' or 'kg'")
     title: Optional[str] = Field(None, description="Title of the source (for web)")
     url: Optional[str] = Field(None, description="URL of the source (for web)")
     content: Optional[str] = Field(None, description="Content snippet (for KG)")
