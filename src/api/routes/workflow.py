@@ -16,7 +16,6 @@ from src.api.models import (
     ErrorResponse,
 )
 from src.core.workflow import build_workflow
-from src.core.constants import Defaults
 
 router = APIRouter(prefix="/workflow", tags=["workflow"])
 
@@ -81,8 +80,11 @@ async def run_workflow_internal(
         "node_contents": [],
         "edge_contents": [],
         "web_contents": [],
+        "node_citations": [],
+        "edge_citations": [],
+        "web_citations": [],
         "citations": [],
-        "retry_count": 0,
+        "query_transformation_retry_count": 0,
         "hallucination_retry_count": 0,
     }
 
@@ -107,7 +109,12 @@ async def run_workflow_internal(
                     node_name,
                     processing_time,
                     details={
-                        "retry_count": state.get("retry_count", 0),
+                        "query_transformation_retry_count": state.get(
+                            "query_transformation_retry_count", 0
+                        ),
+                        "hallucination_retry_count": state.get(
+                            "hallucination_retry_count", 0
+                        ),
                         "has_node_contents": bool(state.get("node_contents")),
                         "has_edge_contents": bool(state.get("edge_contents")),
                         "has_web_contents": bool(state.get("web_contents")),
@@ -206,13 +213,30 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
 
     These can be enabled independently or together for maximum quality control.
 
-    **Performance Optimization:**
-    - Set `enable_retrieved_document_grading=false` to skip document filtering (~2s faster)
-    - Set `enable_hallucination_checking=false` to skip grounding check (~1-2s faster)
-    - Set `enable_answer_quality_checking=false` to skip quality check (~2-3s faster)
-    - All checks disabled = maximum speed (~5-7s faster) but lower quality
+    **Performance vs Quality Trade-off:**
+    - **Default mode** (all checks disabled): Maximum speed, good quality
+    - Enable `enable_retrieved_document_grading=true` for better relevance (~2s slower)
+    - Enable `enable_hallucination_checking=true` for grounding verification (~1-2s slower)
+    - Enable `enable_answer_quality_checking=true` for answer validation (~2-3s slower)
+    - All checks enabled = highest quality (~5-7s slower) with comprehensive validation
 
-    **Example Request:**
+    **Example Request (Speed Mode - Default):**
+    ```json
+    {
+        "question": "What causes durian leaf curl?",
+        "n_retrieved_documents": 3,
+        "n_web_searches": 3,
+        "node_retrieval": true,
+        "edge_retrieval": false,
+        "episode_retrieval": false,
+        "community_retrieval": false,
+        "enable_retrieved_documents_grading": false,
+        "enable_hallucination_checking": false,
+        "enable_answer_quality_checking": false
+    }
+    ```
+
+    **Example Request (Quality Mode):**
     ```json
     {
         "question": "What causes durian leaf curl?",
@@ -295,58 +319,4 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
                 "detail": str(e),
                 "question": request.question,
             },
-        )
-
-
-@router.post(
-    "/run-simple",
-    summary="Run workflow with simple request/response",
-    description="Simplified endpoint that only returns the answer without workflow details.",
-    response_model=Dict[str, str],
-)
-async def run_workflow_simple(request: WorkflowRequest) -> Dict[str, str]:
-    """
-    Simplified endpoint that returns only the question and answer.
-
-    Useful for quick integrations where workflow details are not needed.
-
-    **Example Response:**
-    ```json
-    {
-        "question": "What causes durian leaf curl?",
-        "answer": "Durian leaf curl can be caused by..."
-    }
-    ```
-    """
-    try:
-        result = await run_workflow_internal(
-            question=request.question,
-            n_documents=request.n_retrieved_documents,
-            n_requests=request.n_web_searches,
-            node_retrieval=request.node_retrieval,
-            edge_retrieval=request.edge_retrieval,
-            episode_retrieval=request.episode_retrieval,
-            community_retrieval=request.community_retrieval,
-            enable_retrieved_document_grading=request.enable_retrieved_documents_grading,
-            enable_hallucination_checking=request.enable_hallucination_checking,
-            enable_answer_quality_checking=request.enable_answer_quality_checking,
-        )
-
-        if not result["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result["answer"],
-            )
-
-        return {
-            "question": request.question,
-            "answer": result["answer"],
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
         )

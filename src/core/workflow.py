@@ -53,7 +53,7 @@ async def decide_to_generate(
         print(LogMessages.DECISION_ALL_DOCUMENTS_NOT_RELEVANT)
 
         # Check retry count to prevent infinite loops
-        current_retry = state.get("retry_count", 0)
+        current_retry = state.get("query_transformation_retry_count", 0)
         if current_retry >= Defaults.MAX_QUERY_TRANSFORMATION_RETRIES:
             print(
                 LogMessages.MAX_RETRIES_REACHED.format(
@@ -149,7 +149,7 @@ async def grade_generation_and_question(
             return RouteDecision.CORRECT
 
         # Check retry count before looping back to query_transformation
-        current_retry = state.get("retry_count", 0)
+        current_retry = state.get("query_transformation_retry_count", 0)
         if current_retry >= Defaults.MAX_QUERY_TRANSFORMATION_RETRIES:
             print(
                 LogMessages.MAX_RETRIES_REACHED.format(
@@ -340,8 +340,11 @@ async def run_workflow(
         "node_contents": [],
         "edge_contents": [],
         "web_contents": [],
+        "node_citations": [],
+        "edge_citations": [],
+        "web_citations": [],
         "citations": [],
-        "retry_count": 0,
+        "query_transformation_retry_count": 0,
         "hallucination_retry_count": 0,
     }
     try:

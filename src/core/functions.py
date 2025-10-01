@@ -57,7 +57,7 @@ class GraphState(TypedDict):
     n_retrieved_documents: int
     n_web_searches: int
     citations: list[dict[str, str]]
-    retry_count: int
+    query_transformation_retry_count: int
     hallucination_retry_count: int
 
 

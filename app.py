@@ -20,9 +20,13 @@ from src.core.workflow import build_workflow
 from src.core.constants import Defaults
 
 
+# Create a single global loop
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
 # Page configuration
 st.set_page_config(
-    page_title="Adaptive RAG Chat",
+    page_title="Durian Pest & Disease Q&A",
     page_icon="🌿",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -131,12 +135,21 @@ def display_workflow_steps(container: DeltaGenerator):
             )
 
             # Show retry count if present
-            if "retry_count" in details:
-                retry_count = details["retry_count"]
+            if "query_transformation_retry_count" in details:
+                retry_count = details["query_transformation_retry_count"]
                 if retry_count > 0:
                     st.markdown(
                         f"""<div class="retry-warning">
-                            ⚠️ Retry attempt: {retry_count}/{Defaults.MAX_QUERY_TRANSFORMATION_RETRIES}
+                            ⚠️ Query transformation retry: {retry_count}/{Defaults.MAX_QUERY_TRANSFORMATION_RETRIES}
+                        </div>""",
+                        unsafe_allow_html=True,
+                    )
+            if "hallucination_retry_count" in details:
+                retry_count = details["hallucination_retry_count"]
+                if retry_count > 0:
+                    st.markdown(
+                        f"""<div class="retry-warning">
+                            ⚠️ Hallucination check retry: {retry_count}/{Defaults.MAX_HALLUCINATION_RETRIES}
                         </div>""",
                         unsafe_allow_html=True,
                     )
@@ -183,10 +196,15 @@ def display_citations(container: DeltaGenerator):
 
 async def run_adaptive_rag(
     question: str,
-    n_documents: int = Defaults.N_DOCUMENTS,
-    n_requests: int = Defaults.N_REQUESTS,
-    enable_document_grading: bool = Defaults.ENABLE_DOCUMENT_GRADING,
-    enable_generation_grading: bool = Defaults.ENABLE_GENERATION_GRADING,
+    n_retrieved_documents: int = Defaults.N_RETRIEVED_DOCUMENTS,
+    n_web_searches: int = Defaults.N_WEB_SEARCHES,
+    node_retrieval: bool = Defaults.NODE_RETRIEVAL,
+    edge_retrieval: bool = Defaults.EDGE_RETRIEVAL,
+    episode_retrieval: bool = Defaults.EPISODE_RETRIEVAL,
+    community_retrieval: bool = Defaults.COMMUNITY_RETRIEVAL,
+    enable_retrieved_document_grading: bool = Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
+    enable_hallucination_checking: bool = Defaults.ENABLE_HALLUCINATION_CHECKING,
+    enable_answer_quality_checking: bool = Defaults.ENABLE_ANSWER_QUALITY_CHECKING,
 ) -> Dict[str, Any]:
     """Run the adaptive RAG workflow and track steps."""
     # Clear previous workflow steps and citations
@@ -195,19 +213,28 @@ async def run_adaptive_rag(
 
     workflow = (
         await build_workflow(
-            enable_document_grading=enable_document_grading,
-            enable_generation_grading=enable_generation_grading,
+            enable_retrieved_document_grading=enable_retrieved_document_grading,
+            enable_hallucination_checking=enable_hallucination_checking,
+            enable_answer_quality_checking=enable_answer_quality_checking,
         )
     ).compile()
     inputs = {
         "question": question,
-        "n_documents": n_documents,
-        "n_requests": n_requests,
+        "n_retrieved_documents": n_retrieved_documents,
+        "n_web_searches": n_web_searches,
+        "node_retrieval": node_retrieval,
+        "edge_retrieval": edge_retrieval,
+        "episode_retrieval": episode_retrieval,
+        "community_retrieval": community_retrieval,
         "node_contents": [],
         "edge_contents": [],
         "web_contents": [],
+        "node_citations": [],
+        "edge_citations": [],
         "web_citations": [],
-        "retry_count": 0,
+        "citations": [],
+        "query_transformation_retry_count": 0,
+        "hallucination_retry_count": 0,
     }
 
     final_state = None
@@ -219,7 +246,12 @@ async def run_adaptive_rag(
                 add_workflow_step(
                     node_name,
                     details={
-                        "retry_count": state.get("retry_count", 0),
+                        "query_transformation_retry_count": state.get(
+                            "query_transformation_retry_count", 0
+                        ),
+                        "hallucination_retry_count": state.get(
+                            "hallucination_retry_count", 0
+                        ),
                         "has_node_contents": bool(state.get("node_contents")),
                         "has_edge_contents": bool(state.get("edge_contents")),
                         "has_web_contents": bool(state.get("web_contents")),
@@ -232,20 +264,25 @@ async def run_adaptive_rag(
 
         # Extract citations
         if final_state:
-            web_citations = final_state.get("web_citations", [])
-            for citation in web_citations:
-                st.session_state.citations.append(
-                    {
-                        "type": "web",
-                        "title": citation.get("title", ""),
-                        "url": citation.get("url", ""),
-                    }
-                )
-
-            # Add KG citations if available
-            kg_citations = final_state.get("kg_citations", [])
-            for citation in kg_citations:
-                st.session_state.citations.append({"type": "kg", "content": citation})
+            citations = final_state.get("citations", [])
+            for citation in citations:
+                if citation.get("url"):
+                    # Web citation
+                    st.session_state.citations.append(
+                        {
+                            "type": "web",
+                            "title": citation.get("title", ""),
+                            "url": citation.get("url", ""),
+                        }
+                    )
+                else:
+                    # KG citation
+                    st.session_state.citations.append(
+                        {
+                            "type": "kg",
+                            "content": citation.get("title", ""),
+                        }
+                    )
 
         return {
             "success": True,
@@ -284,41 +321,70 @@ def main():
 
         # Retrieval settings
         st.markdown("#### 📊 Retrieval Settings")
-        n_documents = st.slider(
+        n_retrieved_documents = st.slider(
             "Number of documents to retrieve",
             min_value=1,
             max_value=10,
-            value=Defaults.N_DOCUMENTS,
+            value=Defaults.N_RETRIEVED_DOCUMENTS,
             help="Number of documents to retrieve from knowledge graph",
         )
 
-        n_requests = st.slider(
+        n_web_searches = st.slider(
             "Number of web search results",
             min_value=1,
             max_value=10,
-            value=Defaults.N_REQUESTS,
+            value=Defaults.N_WEB_SEARCHES,
             help="Number of results from web search",
+        )
+
+        # Knowledge graph retrieval types
+        st.markdown("#### 🔍 KG Retrieval Types")
+        node_retrieval = st.checkbox(
+            "Node Retrieval",
+            value=Defaults.NODE_RETRIEVAL,
+            help="Retrieve individual knowledge graph nodes",
+        )
+        edge_retrieval = st.checkbox(
+            "Edge Retrieval",
+            value=Defaults.EDGE_RETRIEVAL,
+            help="Retrieve relationships between entities",
+        )
+        episode_retrieval = st.checkbox(
+            "Episode Retrieval",
+            value=Defaults.EPISODE_RETRIEVAL,
+            help="Retrieve contextual episodes",
+        )
+        community_retrieval = st.checkbox(
+            "Community Retrieval",
+            value=Defaults.COMMUNITY_RETRIEVAL,
+            help="Retrieve community-level information",
         )
 
         st.markdown("---")
 
         # Workflow optimization settings
-        st.markdown("#### ⚡ Workflow Optimization")
+        st.markdown("#### ⚡ Quality Control")
         st.markdown(
-            "<small>Toggle these to speed up processing</small>",
+            "<small>Enable for higher quality (slower processing)</small>",
             unsafe_allow_html=True,
         )
 
-        enable_document_grading = st.checkbox(
-            "✅ Document Grading",
-            value=Defaults.ENABLE_DOCUMENT_GRADING,
-            help="Grade retrieved documents for relevance. Disable for faster processing.",
+        enable_retrieved_document_grading = st.checkbox(
+            "Document Relevance Grading",
+            value=Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
+            help="Grade retrieved documents for relevance. Enable for higher quality (~2s slower).",
         )
 
-        enable_generation_grading = st.checkbox(
-            "✅ Answer Quality Check",
-            value=Defaults.ENABLE_GENERATION_GRADING,
-            help="Check generated answers for hallucinations and quality. Disable for faster responses.",
+        enable_hallucination_checking = st.checkbox(
+            "Hallucination Checking",
+            value=Defaults.ENABLE_HALLUCINATION_CHECKING,
+            help="Check if answer is grounded in context. Enable for validation (~1-2s slower).",
+        )
+
+        enable_answer_quality_checking = st.checkbox(
+            "Answer Quality Checking",
+            value=Defaults.ENABLE_ANSWER_QUALITY_CHECKING,
+            help="Check if answer addresses the question. Enable for validation (~2-3s slower).",
         )
 
         st.markdown("---")
@@ -328,22 +394,22 @@ def main():
 
         col1, col2 = st.columns(2)
         with col1:
-            st.metric("Documents", n_documents)
-            st.metric("Web Results", n_requests)
+            st.metric("Documents", n_retrieved_documents)
+            st.metric("Web Results", n_web_searches)
         with col2:
             st.metric("Max Retries", Defaults.MAX_QUERY_TRANSFORMATION_RETRIES)
 
-        # Optimization status
-        optimization_status = []
-        if not enable_document_grading:
-            optimization_status.append("⚡ Fast mode: Doc grading OFF")
-        if not enable_generation_grading:
-            optimization_status.append("⚡ Fast mode: Quality check OFF")
+        # Mode status
+        quality_checks_enabled = (
+            enable_retrieved_document_grading
+            or enable_hallucination_checking
+            or enable_answer_quality_checking
+        )
 
-        if optimization_status:
-            st.warning("\n".join(optimization_status))
+        if quality_checks_enabled:
+            st.success("🔍 Quality mode: Enhanced validation enabled")
         else:
-            st.success("🔍 Full quality mode enabled")
+            st.info("⚡ Speed mode: Fast processing (default)")
 
         st.markdown("---")
 
@@ -427,13 +493,18 @@ def main():
             with st.spinner("🤔 Thinking and searching..."):
                 # Run workflow with proper error handling
                 try:
-                    result = asyncio.run(
+                    result = loop.run_until_complete(
                         run_adaptive_rag(
                             question=question,
-                            n_documents=n_documents,
-                            n_requests=n_requests,
-                            enable_document_grading=enable_document_grading,
-                            enable_generation_grading=enable_generation_grading,
+                            n_retrieved_documents=n_retrieved_documents,
+                            n_web_searches=n_web_searches,
+                            node_retrieval=node_retrieval,
+                            edge_retrieval=edge_retrieval,
+                            episode_retrieval=episode_retrieval,
+                            community_retrieval=community_retrieval,
+                            enable_retrieved_document_grading=enable_retrieved_document_grading,
+                            enable_hallucination_checking=enable_hallucination_checking,
+                            enable_answer_quality_checking=enable_answer_quality_checking,
                         )
                     )
                 except Exception as e:
