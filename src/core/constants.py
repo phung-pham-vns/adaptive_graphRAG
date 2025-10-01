@@ -55,13 +55,21 @@ class Defaults:
     N_RETRIEVED_DOCUMENTS = 3
     N_WEB_SEARCHES = 3
     NODE_RETRIEVAL = True
-    EDGE_RETRIEVAL = True
+    EDGE_RETRIEVAL = False
     EPISODE_RETRIEVAL = False
     COMMUNITY_RETRIEVAL = False
     MAX_COROUTINES = 1
-    MAX_RETRY_COUNT = 3  # Maximum number of query transformation retries
-    ENABLE_RETRIEVED_DOCUMENTS_GRADING = True  # Enable retrieved documents grading
-    ENABLE_GENERATION_GRADING = True  # Enable hallucination and answer quality checking
+    MAX_QUERY_TRANSFORMATION_RETRIES = (
+        3  # Maximum number of query transformation retries
+    )
+    MAX_HALLUCINATION_RETRIES = 3  # Maximum number of hallucination check retries
+    ENABLE_RETRIEVED_DOCUMENTS_GRADING = False  # Enable retrieved documents grading
+    ENABLE_HALLUCINATION_CHECKING = (
+        False  # Enable hallucination checking (grounding check)
+    )
+    ENABLE_ANSWER_QUALITY_CHECKING = (
+        False  # Enable answer quality checking (addresses question check)
+    )
 
 
 # Document Mapping Information that get from indexing pipeline {document_id: document_name}

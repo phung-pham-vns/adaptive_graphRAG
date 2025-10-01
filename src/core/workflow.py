@@ -53,11 +53,13 @@ async def decide_to_generate(
         print(LogMessages.DECISION_ALL_DOCUMENTS_NOT_RELEVANT)
 
         # Check retry count to prevent infinite loops
-        current_retry = state.get("retry_count", 0)
-        if current_retry >= Defaults.MAX_RETRY_COUNT:
+        current_retry = state.get("query_transformation_retry_count", 0)
+        if current_retry >= Defaults.MAX_QUERY_TRANSFORMATION_RETRIES:
             print(
                 LogMessages.MAX_RETRIES_REACHED.format(
-                    current_retry, Defaults.MAX_RETRY_COUNT, "WEB SEARCH"
+                    current_retry,
+                    Defaults.MAX_QUERY_TRANSFORMATION_RETRIES,
+                    "WEB SEARCH",
                 )
             )
             return RouteDecision.WEB_SEARCH
@@ -96,6 +98,24 @@ async def grade_generation_and_context(
         )
 
         if hallucination_score.binary_score != BinaryScore.YES:
+            # Check retry count to prevent infinite loops
+            current_hallucination_retry = state.get("hallucination_retry_count", 0)
+            if current_hallucination_retry >= Defaults.MAX_HALLUCINATION_RETRIES:
+                print(
+                    LogMessages.MAX_RETRIES_REACHED.format(
+                        current_hallucination_retry,
+                        Defaults.MAX_HALLUCINATION_RETRIES,
+                        "GROUNDED (BEST EFFORT)",
+                    )
+                )
+                # Return as grounded to end workflow with best effort answer
+                return RouteDecision.GROUNDED
+
+            print(
+                LogMessages.RETRY_COUNT_INFO.format(
+                    current_hallucination_retry + 1, Defaults.MAX_HALLUCINATION_RETRIES
+                )
+            )
             print(LogMessages.DECISION_NOT_GROUNDED)
             return RouteDecision.NOT_GROUNDED
 
@@ -104,7 +124,8 @@ async def grade_generation_and_context(
 
     except Exception as e:
         print(LogMessages.ERROR_IN.format("HALLUCINATION GRADING", e))
-        return RouteDecision.NOT_GROUNDED
+        # On error, return grounded to end workflow with best effort answer
+        return RouteDecision.GROUNDED
 
 
 async def grade_generation_and_question(
@@ -128,11 +149,13 @@ async def grade_generation_and_question(
             return RouteDecision.CORRECT
 
         # Check retry count before looping back to query_transformation
-        current_retry = state.get("retry_count", 0)
-        if current_retry >= Defaults.MAX_RETRY_COUNT:
+        current_retry = state.get("query_transformation_retry_count", 0)
+        if current_retry >= Defaults.MAX_QUERY_TRANSFORMATION_RETRIES:
             print(
                 LogMessages.MAX_RETRIES_REACHED.format(
-                    current_retry, Defaults.MAX_RETRY_COUNT, "END (BEST EFFORT)"
+                    current_retry,
+                    Defaults.MAX_QUERY_TRANSFORMATION_RETRIES,
+                    "END (BEST EFFORT)",
                 )
             )
             # Return as corect to end workflow with best effort answer
@@ -149,13 +172,15 @@ async def grade_generation_and_question(
 
 async def build_workflow(
     enable_retrieved_document_grading: bool = Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
-    enable_generation_grading: bool = Defaults.ENABLE_GENERATION_GRADING,
+    enable_hallucination_checking: bool = Defaults.ENABLE_HALLUCINATION_CHECKING,
+    enable_answer_quality_checking: bool = Defaults.ENABLE_ANSWER_QUALITY_CHECKING,
 ) -> StateGraph[GraphState]:
     """Build and configure the LangGraph workflow with optional optimization flags.
 
     Args:
         enable_retrieved_document_grading: If True, grade retrieved documents for relevance
-        enable_generation_grading: If True, check generated answers for hallucinations and quality
+        enable_hallucination_checking: If True, check if generated answer is grounded in context
+        enable_answer_quality_checking: If True, check if generated answer addresses the question
     """
     workflow = StateGraph(GraphState)
 
@@ -200,25 +225,41 @@ async def build_workflow(
 
     workflow.add_edge("query_transformation", "knowledge_graph_retrieval")
 
-    # Configure answer generation flow based on generation grading flag
-    if enable_generation_grading:
-        # With grading: check hallucination first, then answer quality
-        # Add a passthrough node for answer quality checking
+    # Configure answer generation flow based on grading flags
+    # We need to handle 4 cases:
+    # 1. Both enabled: hallucination → quality → end
+    # 2. Only hallucination: hallucination → end
+    # 3. Only quality: quality → end
+    # 4. Neither: direct → end
+
+    if enable_hallucination_checking and enable_answer_quality_checking:
+        # Both checks enabled: chain them together
         async def answer_quality_check(state: GraphState) -> GraphState:
             """Passthrough node for answer quality checking routing."""
             return state
 
+        async def increment_hallucination_retry(state: GraphState) -> GraphState:
+            """Increment hallucination retry count before regenerating."""
+            current_retry = state.get("hallucination_retry_count", 0)
+            return {"hallucination_retry_count": current_retry + 1}
+
         workflow.add_node("answer_quality_check", answer_quality_check)
+        workflow.add_node(
+            "increment_hallucination_retry", increment_hallucination_retry
+        )
 
         # First check: Is generation grounded in context?
         workflow.add_conditional_edges(
             "answer_generation",
             grade_generation_and_context,
             {
-                RouteDecision.NOT_GROUNDED: "answer_generation",  # Retry generation if hallucinating
+                RouteDecision.NOT_GROUNDED: "increment_hallucination_retry",  # Increment retry count
                 RouteDecision.GROUNDED: "answer_quality_check",  # Check answer quality if grounded
             },
         )
+
+        # After incrementing retry count, regenerate answer
+        workflow.add_edge("increment_hallucination_retry", "answer_generation")
 
         # Second check: Does generation address the question?
         workflow.add_conditional_edges(
@@ -229,8 +270,40 @@ async def build_workflow(
                 RouteDecision.CORRECT: END,  # End if useful
             },
         )
+    elif enable_hallucination_checking:
+        # Only hallucination check enabled
+        async def increment_hallucination_retry(state: GraphState) -> GraphState:
+            """Increment hallucination retry count before regenerating."""
+            current_retry = state.get("hallucination_retry_count", 0)
+            return {"hallucination_retry_count": current_retry + 1}
+
+        workflow.add_node(
+            "increment_hallucination_retry", increment_hallucination_retry
+        )
+
+        workflow.add_conditional_edges(
+            "answer_generation",
+            grade_generation_and_context,
+            {
+                RouteDecision.NOT_GROUNDED: "increment_hallucination_retry",  # Increment retry count
+                RouteDecision.GROUNDED: END,  # End if grounded
+            },
+        )
+
+        # After incrementing retry count, regenerate answer
+        workflow.add_edge("increment_hallucination_retry", "answer_generation")
+    elif enable_answer_quality_checking:
+        # Only answer quality check enabled
+        workflow.add_conditional_edges(
+            "answer_generation",
+            grade_generation_and_question,
+            {
+                RouteDecision.INCORRECT: "query_transformation",  # Transform query if not useful
+                RouteDecision.CORRECT: END,  # End if useful
+            },
+        )
     else:
-        # Without grading: answer directly ends workflow
+        # Neither check enabled: answer directly ends workflow
         workflow.add_edge("answer_generation", END)
 
     return workflow
@@ -245,13 +318,15 @@ async def run_workflow(
     episode_retrieval: bool = Defaults.EPISODE_RETRIEVAL,
     community_retrieval: bool = Defaults.COMMUNITY_RETRIEVAL,
     enable_retrieved_document_grading: bool = Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
-    enable_generation_grading: bool = Defaults.ENABLE_GENERATION_GRADING,
+    enable_hallucination_checking: bool = Defaults.ENABLE_HALLUCINATION_CHECKING,
+    enable_answer_quality_checking: bool = Defaults.ENABLE_ANSWER_QUALITY_CHECKING,
 ) -> None:
     """Run the workflow with the given question and configuration options."""
     workflow = (
         await build_workflow(
             enable_retrieved_document_grading=enable_retrieved_document_grading,
-            enable_generation_grading=enable_generation_grading,
+            enable_hallucination_checking=enable_hallucination_checking,
+            enable_answer_quality_checking=enable_answer_quality_checking,
         )
     ).compile()
     inputs = {
@@ -265,41 +340,188 @@ async def run_workflow(
         "node_contents": [],
         "edge_contents": [],
         "web_contents": [],
+        "node_citations": [],
+        "edge_citations": [],
+        "web_citations": [],
         "citations": [],
-        "retry_count": 0,
+        "query_transformation_retry_count": 0,
+        "hallucination_retry_count": 0,
     }
     try:
         async for output in workflow.astream(inputs):
             for key, value in output.items():
-                pprint(f"Node '{key.upper()}'")
-
-        pprint(f"Final Answer: {value.get('generation', 'No final answer generated.')}")
-        pprint(f"Citations: {value.get('citations', 'No citations.')}")
+                print(f"Node '{key.upper()}'")
+        print("=" * 80)
+        print(f"Final Answer: {value.get('generation', 'No final answer generated.')}")
+        print(f"Citations:")
+        citations = value.get("citations", [])
+        for citation in citations:
+            print(f"  - Title: {citation.get('title')}")
+            print(f"  - URL: {citation.get('url', None)}")
+        print("=" * 80)
+        print()
 
     except Exception as e:
-        pprint(f"Error during workflow execution: {e}")
+        print(f"Error during workflow execution: {e}")
 
 
 # Example usage
 if __name__ == "__main__":
     import asyncio
+    import argparse
 
-    # question = "My young durian leaves are curling and look scorched at the edges, could that be leafhopper damage and what should I do first?"
-    # question = "Where can I buy durian in Thailand?"
-    # question = "If I only see a few durian scales on some twigs, should I spray the whole block?"
-    # question = "What’s a good rule for rotating insecticides when dealing with psyllids or leafhoppers?"
-    # question = "Leaves show powdery white patches—what durian disease could this be?"
-    question = "Which longhorn borer treatments are suitable for large limbs and trunk?"
+    parser = argparse.ArgumentParser(
+        description="Run the Adaptive RAG workflow with custom configuration"
+    )
+
+    # Required argument
+    parser.add_argument(
+        "-q",
+        "--question",
+        type=str,
+        required=True,
+        help="The question to ask the adaptive RAG system",
+    )
+
+    # Retrieval parameters
+    parser.add_argument(
+        "--n-retrieved-documents",
+        type=int,
+        default=Defaults.N_RETRIEVED_DOCUMENTS,
+        help=f"Number of documents to retrieve from knowledge graph (default: {Defaults.N_RETRIEVED_DOCUMENTS})",
+    )
+    parser.add_argument(
+        "--n-web-searches",
+        type=int,
+        default=Defaults.N_WEB_SEARCHES,
+        help=f"Number of web search results to fetch (default: {Defaults.N_WEB_SEARCHES})",
+    )
+
+    # Knowledge graph retrieval types
+    parser.add_argument(
+        "--node-retrieval",
+        action="store_true",
+        default=Defaults.NODE_RETRIEVAL,
+        help="Enable node retrieval from knowledge graph",
+    )
+    parser.add_argument(
+        "--no-node-retrieval",
+        dest="node_retrieval",
+        action="store_false",
+        help="Disable node retrieval from knowledge graph",
+    )
+    parser.add_argument(
+        "--edge-retrieval",
+        action="store_true",
+        default=Defaults.EDGE_RETRIEVAL,
+        help="Enable edge retrieval from knowledge graph",
+    )
+    parser.add_argument(
+        "--no-edge-retrieval",
+        dest="edge_retrieval",
+        action="store_false",
+        help="Disable edge retrieval from knowledge graph",
+    )
+    parser.add_argument(
+        "--episode-retrieval",
+        action="store_true",
+        default=Defaults.EPISODE_RETRIEVAL,
+        help="Enable episode retrieval from knowledge graph",
+    )
+    parser.add_argument(
+        "--no-episode-retrieval",
+        dest="episode_retrieval",
+        action="store_false",
+        help="Disable episode retrieval from knowledge graph",
+    )
+    parser.add_argument(
+        "--community-retrieval",
+        action="store_true",
+        default=Defaults.COMMUNITY_RETRIEVAL,
+        help="Enable community retrieval from knowledge graph",
+    )
+    parser.add_argument(
+        "--no-community-retrieval",
+        dest="community_retrieval",
+        action="store_false",
+        help="Disable community retrieval from knowledge graph",
+    )
+
+    # Quality control options
+    parser.add_argument(
+        "--enable-document-grading",
+        dest="enable_retrieved_document_grading",
+        action="store_true",
+        default=Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
+        help="Enable retrieved documents grading for relevance",
+    )
+    parser.add_argument(
+        "--no-document-grading",
+        dest="enable_retrieved_document_grading",
+        action="store_false",
+        help="Disable retrieved documents grading",
+    )
+    parser.add_argument(
+        "--enable-hallucination-check",
+        dest="enable_hallucination_checking",
+        action="store_true",
+        default=Defaults.ENABLE_HALLUCINATION_CHECKING,
+        help="Enable hallucination checking to verify answer is grounded in context",
+    )
+    parser.add_argument(
+        "--no-hallucination-check",
+        dest="enable_hallucination_checking",
+        action="store_false",
+        help="Disable hallucination checking",
+    )
+    parser.add_argument(
+        "--enable-quality-check",
+        dest="enable_answer_quality_checking",
+        action="store_true",
+        default=Defaults.ENABLE_ANSWER_QUALITY_CHECKING,
+        help="Enable answer quality checking to verify answer addresses the question",
+    )
+    parser.add_argument(
+        "--no-quality-check",
+        dest="enable_answer_quality_checking",
+        action="store_false",
+        help="Disable answer quality checking",
+    )
+
+    # Parse arguments
+    args = parser.parse_args()
+
+    # Print configuration
+    print("=" * 80)
+    print("ADAPTIVE RAG WORKFLOW")
+    print("=" * 80)
+    print(f"Question: {args.question}")
+    print(f"\nRetrieval Configuration:")
+    print(f"  - Documents to retrieve: {args.n_retrieved_documents}")
+    print(f"  - Web searches: {args.n_web_searches}")
+    print(f"  - Node retrieval: {args.node_retrieval}")
+    print(f"  - Edge retrieval: {args.edge_retrieval}")
+    print(f"  - Episode retrieval: {args.episode_retrieval}")
+    print(f"  - Community retrieval: {args.community_retrieval}")
+    print(f"\nQuality Control:")
+    print(f"  - Document grading: {args.enable_retrieved_document_grading}")
+    print(f"  - Hallucination checking: {args.enable_hallucination_checking}")
+    print(f"  - Answer quality checking: {args.enable_answer_quality_checking}")
+    print("=" * 80)
+    print()
+
+    # Run workflow
     asyncio.run(
         run_workflow(
-            question,
-            n_retrieved_documents=Defaults.N_RETRIEVED_DOCUMENTS,
-            n_web_searches=Defaults.N_WEB_SEARCHES,
-            node_retrieval=Defaults.NODE_RETRIEVAL,
-            edge_retrieval=Defaults.EDGE_RETRIEVAL,
-            episode_retrieval=Defaults.EPISODE_RETRIEVAL,
-            community_retrieval=Defaults.COMMUNITY_RETRIEVAL,
-            enable_retrieved_document_grading=Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
-            enable_generation_grading=Defaults.ENABLE_GENERATION_GRADING,
+            question=args.question,
+            n_retrieved_documents=args.n_retrieved_documents,
+            n_web_searches=args.n_web_searches,
+            node_retrieval=args.node_retrieval,
+            edge_retrieval=args.edge_retrieval,
+            episode_retrieval=args.episode_retrieval,
+            community_retrieval=args.community_retrieval,
+            enable_retrieved_document_grading=args.enable_retrieved_document_grading,
+            enable_hallucination_checking=args.enable_hallucination_checking,
+            enable_answer_quality_checking=args.enable_answer_quality_checking,
         )
     )
