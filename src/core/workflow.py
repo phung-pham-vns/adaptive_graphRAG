@@ -54,10 +54,12 @@ async def decide_to_generate(
 
         # Check retry count to prevent infinite loops
         current_retry = state.get("retry_count", 0)
-        if current_retry >= Defaults.MAX_RETRY_COUNT:
+        if current_retry >= Defaults.MAX_QUERY_TRANSFORMATION_RETRIES:
             print(
                 LogMessages.MAX_RETRIES_REACHED.format(
-                    current_retry, Defaults.MAX_RETRY_COUNT, "WEB SEARCH"
+                    current_retry,
+                    Defaults.MAX_QUERY_TRANSFORMATION_RETRIES,
+                    "WEB SEARCH",
                 )
             )
             return RouteDecision.WEB_SEARCH
@@ -96,6 +98,24 @@ async def grade_generation_and_context(
         )
 
         if hallucination_score.binary_score != BinaryScore.YES:
+            # Check retry count to prevent infinite loops
+            current_hallucination_retry = state.get("hallucination_retry_count", 0)
+            if current_hallucination_retry >= Defaults.MAX_HALLUCINATION_RETRIES:
+                print(
+                    LogMessages.MAX_RETRIES_REACHED.format(
+                        current_hallucination_retry,
+                        Defaults.MAX_HALLUCINATION_RETRIES,
+                        "GROUNDED (BEST EFFORT)",
+                    )
+                )
+                # Return as grounded to end workflow with best effort answer
+                return RouteDecision.GROUNDED
+
+            print(
+                LogMessages.RETRY_COUNT_INFO.format(
+                    current_hallucination_retry + 1, Defaults.MAX_HALLUCINATION_RETRIES
+                )
+            )
             print(LogMessages.DECISION_NOT_GROUNDED)
             return RouteDecision.NOT_GROUNDED
 
@@ -104,7 +124,8 @@ async def grade_generation_and_context(
 
     except Exception as e:
         print(LogMessages.ERROR_IN.format("HALLUCINATION GRADING", e))
-        return RouteDecision.NOT_GROUNDED
+        # On error, return grounded to end workflow with best effort answer
+        return RouteDecision.GROUNDED
 
 
 async def grade_generation_and_question(
@@ -129,10 +150,12 @@ async def grade_generation_and_question(
 
         # Check retry count before looping back to query_transformation
         current_retry = state.get("retry_count", 0)
-        if current_retry >= Defaults.MAX_RETRY_COUNT:
+        if current_retry >= Defaults.MAX_QUERY_TRANSFORMATION_RETRIES:
             print(
                 LogMessages.MAX_RETRIES_REACHED.format(
-                    current_retry, Defaults.MAX_RETRY_COUNT, "END (BEST EFFORT)"
+                    current_retry,
+                    Defaults.MAX_QUERY_TRANSFORMATION_RETRIES,
+                    "END (BEST EFFORT)",
                 )
             )
             # Return as corect to end workflow with best effort answer
@@ -215,17 +238,28 @@ async def build_workflow(
             """Passthrough node for answer quality checking routing."""
             return state
 
+        async def increment_hallucination_retry(state: GraphState) -> GraphState:
+            """Increment hallucination retry count before regenerating."""
+            current_retry = state.get("hallucination_retry_count", 0)
+            return {"hallucination_retry_count": current_retry + 1}
+
         workflow.add_node("answer_quality_check", answer_quality_check)
+        workflow.add_node(
+            "increment_hallucination_retry", increment_hallucination_retry
+        )
 
         # First check: Is generation grounded in context?
         workflow.add_conditional_edges(
             "answer_generation",
             grade_generation_and_context,
             {
-                RouteDecision.NOT_GROUNDED: "answer_generation",  # Retry generation if hallucinating
+                RouteDecision.NOT_GROUNDED: "increment_hallucination_retry",  # Increment retry count
                 RouteDecision.GROUNDED: "answer_quality_check",  # Check answer quality if grounded
             },
         )
+
+        # After incrementing retry count, regenerate answer
+        workflow.add_edge("increment_hallucination_retry", "answer_generation")
 
         # Second check: Does generation address the question?
         workflow.add_conditional_edges(
@@ -238,14 +272,26 @@ async def build_workflow(
         )
     elif enable_hallucination_checking:
         # Only hallucination check enabled
+        async def increment_hallucination_retry(state: GraphState) -> GraphState:
+            """Increment hallucination retry count before regenerating."""
+            current_retry = state.get("hallucination_retry_count", 0)
+            return {"hallucination_retry_count": current_retry + 1}
+
+        workflow.add_node(
+            "increment_hallucination_retry", increment_hallucination_retry
+        )
+
         workflow.add_conditional_edges(
             "answer_generation",
             grade_generation_and_context,
             {
-                RouteDecision.NOT_GROUNDED: "answer_generation",  # Retry generation if hallucinating
+                RouteDecision.NOT_GROUNDED: "increment_hallucination_retry",  # Increment retry count
                 RouteDecision.GROUNDED: END,  # End if grounded
             },
         )
+
+        # After incrementing retry count, regenerate answer
+        workflow.add_edge("increment_hallucination_retry", "answer_generation")
     elif enable_answer_quality_checking:
         # Only answer quality check enabled
         workflow.add_conditional_edges(
@@ -296,6 +342,7 @@ async def run_workflow(
         "web_contents": [],
         "citations": [],
         "retry_count": 0,
+        "hallucination_retry_count": 0,
     }
     try:
         async for output in workflow.astream(inputs):

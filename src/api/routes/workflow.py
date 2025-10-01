@@ -83,6 +83,7 @@ async def run_workflow_internal(
         "web_contents": [],
         "citations": [],
         "retry_count": 0,
+        "hallucination_retry_count": 0,
     }
 
     final_state = None

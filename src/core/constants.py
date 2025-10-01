@@ -59,7 +59,10 @@ class Defaults:
     EPISODE_RETRIEVAL = False
     COMMUNITY_RETRIEVAL = False
     MAX_COROUTINES = 1
-    MAX_RETRY_COUNT = 3  # Maximum number of query transformation retries
+    MAX_QUERY_TRANSFORMATION_RETRIES = (
+        3  # Maximum number of query transformation retries
+    )
+    MAX_HALLUCINATION_RETRIES = 3  # Maximum number of hallucination check retries
     ENABLE_RETRIEVED_DOCUMENTS_GRADING = False  # Enable retrieved documents grading
     ENABLE_HALLUCINATION_CHECKING = (
         False  # Enable hallucination checking (grounding check)

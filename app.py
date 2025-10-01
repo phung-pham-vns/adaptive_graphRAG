@@ -136,7 +136,7 @@ def display_workflow_steps(container: DeltaGenerator):
                 if retry_count > 0:
                     st.markdown(
                         f"""<div class="retry-warning">
-                            ⚠️ Retry attempt: {retry_count}/{Defaults.MAX_RETRY_COUNT}
+                            ⚠️ Retry attempt: {retry_count}/{Defaults.MAX_QUERY_TRANSFORMATION_RETRIES}
                         </div>""",
                         unsafe_allow_html=True,
                     )
@@ -331,7 +331,7 @@ def main():
             st.metric("Documents", n_documents)
             st.metric("Web Results", n_requests)
         with col2:
-            st.metric("Max Retries", Defaults.MAX_RETRY_COUNT)
+            st.metric("Max Retries", Defaults.MAX_QUERY_TRANSFORMATION_RETRIES)
 
         # Optimization status
         optimization_status = []

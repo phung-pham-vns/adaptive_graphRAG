@@ -58,6 +58,7 @@ class GraphState(TypedDict):
     n_web_searches: int
     citations: list[dict[str, str]]
     retry_count: int
+    hallucination_retry_count: int
 
 
 async def get_node_and_edge_contents(
@@ -262,7 +263,12 @@ async def answer_generation(state: GraphState) -> dict:
             generation = await answer_generator.ainvoke(
                 {"context": context, "question": state["question"]}
             )
-            return {"generation": generation.answer, "citations": citations}
+            # Reset hallucination retry count on successful generation
+            return {
+                "generation": generation.answer,
+                "citations": citations,
+                "hallucination_retry_count": 0,
+            }
         except Exception as e:
             print(LogMessages.ERROR_IN.format("ANSWER GENERATION", e))
             return {"generation": "", "citations": citations}
@@ -273,7 +279,7 @@ async def answer_generation(state: GraphState) -> dict:
             generation = await llm_internal_answer_generator.ainvoke(
                 {"question": state["question"]}
             )
-            return {"generation": generation.answer}
+            return {"generation": generation.answer, "hallucination_retry_count": 0}
         except Exception as e:
             print(LogMessages.ERROR_IN.format("LLM INTERNAL ANSWER", e))
             return {
@@ -331,7 +337,9 @@ async def query_transformation(state: GraphState) -> dict:
     print(LogMessages.QUERY_TRANSFORMATION)
     current_retry = state.get("retry_count", 0)
     print(
-        LogMessages.RETRY_COUNT_INFO.format(current_retry + 1, Defaults.MAX_RETRY_COUNT)
+        LogMessages.RETRY_COUNT_INFO.format(
+            current_retry + 1, Defaults.MAX_QUERY_TRANSFORMATION_RETRIES
+        )
     )
     try:
         refined = await question_rewriter.ainvoke({"question": state["question"]})
