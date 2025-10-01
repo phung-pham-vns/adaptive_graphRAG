@@ -6,16 +6,38 @@ from langchain_tavily.tavily_search import TavilySearch
 from graphiti_core.search.search_config_recipes import (
     COMBINED_HYBRID_SEARCH_CROSS_ENCODER,
 )
-from graphiti_core.search.search_config import SearchResults
-from src.core.graphiti_client import GraphitiClient
+from graphiti_core.search.search_config import (
+    CommunityReranker,
+    CommunitySearchConfig,
+    CommunitySearchMethod,
+    EdgeReranker,
+    EdgeSearchConfig,
+    EdgeSearchMethod,
+    EpisodeReranker,
+    EpisodeSearchConfig,
+    EpisodeSearchMethod,
+    NodeReranker,
+    NodeSearchConfig,
+    NodeSearchMethod,
+    SearchConfig,
+    SearchResults,
+)
+from src.core.graphiti import GraphitiClient
 
 from src.core.chains import (
     answer_generator,
+    llm_internal_answer_generator,
     question_rewriter,
     question_router,
     retrieval_grader,
     hallucination_grader,
     answer_grader,
+)
+from src.core.constants import (
+    BinaryScore,
+    LogMessages,
+    Defaults,
+    DOCUMENT_ID_TO_DOCUMENT_NAME,
 )
 
 
@@ -25,10 +47,14 @@ class GraphState(TypedDict):
     node_contents: list[str]
     edge_contents: list[str]
     web_contents: list[str]
-    n_documents: int
-    n_requests: int
-    web_citations: list[dict[str, str]]
-    kg_citations: list[dict[str, str]]
+    node_retrieval: bool
+    edge_retrieval: bool
+    episode_retrieval: bool
+    community_retrieval: bool
+    n_retrieved_documents: int
+    n_web_searches: int
+    citations: list[dict[str, str]]
+    retry_count: int
 
 
 async def get_node_and_edge_contents(
@@ -47,89 +73,177 @@ async def get_node_and_edge_contents(
 
 
 async def search_durian_pest_and_disease_knowledge(
-    question: str, limit: int = 3
+    question: str,
+    limit: int = Defaults.N_RETRIEVED_DOCUMENTS,
+    node_retrieval: bool = Defaults.NODE_RETRIEVAL,
+    edge_retrieval: bool = Defaults.EDGE_RETRIEVAL,
+    episode_retrieval: bool = Defaults.EPISODE_RETRIEVAL,
+    community_retrieval: bool = Defaults.COMMUNITY_RETRIEVAL,
 ) -> tuple[list[str], list[str]]:
     """Search knowledge graph for durian pest and disease information."""
     try:
         graphiti = await GraphitiClient().create_client(
             clear_existing_graphdb_data=False,
-            max_coroutines=1,
+            max_coroutines=Defaults.MAX_COROUTINES,
         )
-        search_type = COMBINED_HYBRID_SEARCH_CROSS_ENCODER.model_copy(deep=True)
-        search_type.limit = limit
-        results = await graphiti.search_(query=question, config=search_type)
-        return await get_node_and_edge_contents(results)
+
+        edge_config = None
+        if edge_retrieval:
+            edge_config = EdgeSearchConfig(
+                search_methods=[
+                    EdgeSearchMethod.bm25,
+                    EdgeSearchMethod.cosine_similarity,
+                    EdgeSearchMethod.bfs,
+                ],
+                reranker=EdgeReranker.cross_encoder,
+            )
+
+        node_config = None
+        if node_retrieval:
+            node_config = NodeSearchConfig(
+                search_methods=[
+                    NodeSearchMethod.bm25,
+                    NodeSearchMethod.cosine_similarity,
+                    NodeSearchMethod.bfs,
+                ],
+                reranker=NodeReranker.cross_encoder,
+            )
+
+        episode_config = None
+        if episode_retrieval:
+            episode_config = EpisodeSearchConfig(
+                search_methods=[
+                    EpisodeSearchMethod.bm25,
+                ],
+                reranker=EpisodeReranker.cross_encoder,
+            )
+
+        community_config = None
+        if community_retrieval:
+            community_config = CommunitySearchConfig(
+                search_methods=[
+                    CommunitySearchMethod.bm25,
+                ],
+                reranker=CommunityReranker.cross_encoder,
+            )
+
+        search_config = SearchConfig(
+            node_config=node_config,
+            edge_config=edge_config,
+            episode_config=episode_config,
+            community_config=community_config,
+            limit=limit,
+        )
+
+        results = await graphiti.search_(query=question, config=search_config)
+        node_contents, edge_contents = await get_node_and_edge_contents(results)
+
+        citations = []
+        for node in results.nodes:
+            document_id = node.group_id
+            document_name = DOCUMENT_ID_TO_DOCUMENT_NAME.get(document_id, None)
+            if (document_name is not None) and (document_name not in citations):
+                citations.append({"title": document_name})
+
+        for edge in results.edges:
+            document_id = edge.group_id
+            document_name = DOCUMENT_ID_TO_DOCUMENT_NAME.get(document_id, None)
+            if (document_name is not None) and (document_name not in citations):
+                citations.append({"title": document_name})
+
+        return node_contents, edge_contents, citations
     except Exception as e:
-        print(f"---ERROR IN KNOWLEDGE GRAPH SEARCH: {e}---")
-        return [], []
+        print(LogMessages.ERROR_IN.format("KNOWLEDGE GRAPH SEARCH", e))
+        return [], [], []
 
 
 def format_context(
     node_contents: list[str],
     edge_contents: list[str],
     web_contents: list[str],
-    web_citations: list[dict[str, str]],
+    citations: list[dict[str, str]],
 ) -> str:
-    """Format node and edge contents into a single string."""
-    context = ""
+    """Format node, edge, web contents, and citations into a single context string."""
+    context_parts = []
+
+    def _format_list(items: list, title: str) -> str:
+        """Helper to format a list of items with numbering."""
+        formatted = "\n".join(f"{i + 1}. {item}" for i, item in enumerate(items))
+        return f"{title}:\n{formatted}\n"
+
     if node_contents:
-        nodes_content = "\n".join(
-            f"{i + 1}. {node}" for i, node in enumerate(node_contents)
-        )
-        context += f"Node Information:\n{nodes_content}\n"
+        context_parts.append(_format_list(node_contents, "Node Information"))
 
     if edge_contents:
-        edges_content = "\n".join(
-            f"{i + 1}. {edge}" for i, edge in enumerate(edge_contents)
-        )
-        context += f"Relationship Information:\n{edges_content}\n"
+        context_parts.append(_format_list(edge_contents, "Relationship Information"))
 
     if web_contents:
-        web_content = "\n".join(
-            f"{i + 1}. {content}" for i, content in enumerate(web_contents)
-        )
-        context += f"Web Information:\n{web_content}\n"
+        context_parts.append(_format_list(web_contents, "Web Information"))
 
-    if web_citations:
-        web_citations = "\n".join(
-            f"{i + 1}. {citation}" for i, citation in enumerate(web_citations)
-        )
-        context += f"Web Citations:\n{web_citations}\n"
+    if citations:
+        context_parts.append(_format_list(citations, "Citations"))
 
-    return context
+    return "".join(context_parts)
 
 
 async def knowledge_graph_retrieval(state: GraphState) -> dict:
     """Retrieve nodes and edges from the knowledge graph."""
-    print("---KNOWLEDGE GRAPH RETRIEVAL---")
-    node_contents, edge_contents = await search_durian_pest_and_disease_knowledge(
-        question=state["question"], limit=state.get("n_documents", 3)
+    print(LogMessages.KNOWLEDGE_GRAPH_RETRIEVAL)
+    node_contents, edge_contents, citations = (
+        await search_durian_pest_and_disease_knowledge(
+            question=state["question"],
+            limit=state.get("n_retrieved_documents", Defaults.N_RETRIEVED_DOCUMENTS),
+        )
     )
-    return {"node_contents": node_contents, "edge_contents": edge_contents}
+    return {
+        "node_contents": node_contents,
+        "edge_contents": edge_contents,
+        "citations": citations,
+    }
 
 
 async def answer_generation(state: GraphState) -> dict:
-    """Generate an answer using the provided context and question."""
-    print("---ANSWER GENERATION---")
-    node_contents = state.get("node_contents", None)
-    edge_contents = state.get("edge_contents", None)
-    web_contents = state.get("web_contents", None)
-    web_citations = state.get("web_citations", None)
-    context = format_context(node_contents, edge_contents, web_contents, web_citations)
-    try:
-        generation = await answer_generator.ainvoke(
-            {"context": context, "question": state["question"]}
-        )
-        return {"generation": generation.answer, "web_citations": web_citations}
-    except Exception as e:
-        print(f"---ERROR IN ANSWER GENERATION: {e}---")
-        return {"generation": "", "web_citations": web_citations}
+    """Generate an answer using context if available, otherwise use LLM internal knowledge."""
+    node_contents = state.get("node_contents", [])
+    edge_contents = state.get("edge_contents", [])
+    web_contents = state.get("web_contents", [])
+    citations = state.get("citations", [])
+
+    # Check if any context is available
+    has_context = bool(node_contents or edge_contents or web_contents)
+
+    if has_context:
+        # Generate answer with context
+        print(LogMessages.ANSWER_GENERATION)
+        context = format_context(node_contents, edge_contents, web_contents, citations)
+        try:
+            generation = await answer_generator.ainvoke(
+                {"context": context, "question": state["question"]}
+            )
+            return {"generation": generation.answer, "citations": citations}
+        except Exception as e:
+            print(LogMessages.ERROR_IN.format("ANSWER GENERATION", e))
+            return {"generation": "", "citations": citations}
+    else:
+        # Generate answer using LLM internal knowledge (for out-of-domain questions)
+        print(LogMessages.LLM_INTERNAL_ANSWER)
+        try:
+            generation = await llm_internal_answer_generator.ainvoke(
+                {"question": state["question"]}
+            )
+            return {"generation": generation.answer}
+        except Exception as e:
+            print(LogMessages.ERROR_IN.format("LLM INTERNAL ANSWER", e))
+            return {
+                "generation": "I apologize, but I'm unable to answer that question at the moment."
+            }
 
 
-async def nodes_and_edges_grading(state: GraphState) -> dict:
+async def retrieved_documents_grading(state: GraphState) -> dict:
     """Grade the relevance of node and edge contents."""
-    print("---CHECK DOCUMENT RELEVANCE TO QUESTION---")
+    print(LogMessages.CHECK_DOCUMENT_RELEVANCE)
     question = state["question"]
+    citations = state.get("citations", [])
 
     async def filter_contents(contents: list[str], content_type: str) -> list[str]:
         tasks = [
@@ -140,48 +254,55 @@ async def nodes_and_edges_grading(state: GraphState) -> dict:
         filtered = []
         for content, score in zip(contents, scores):
             if isinstance(score, Exception):
-                print(f"---ERROR GRADING {content_type.upper()} CONTENT: {score}---")
+                print(LogMessages.ERROR_GRADING.format(content_type.upper(), score))
                 continue
             grade = score.binary_score
-            print(
-                f"---GRADE: {content_type.upper()} CONTENT {'RELEVANT' if grade == 'yes' else 'NOT RELEVANT'}---"
-            )
-            if grade == "yes":
+            if grade == BinaryScore.YES:
+                print(LogMessages.GRADE_RELEVANT.format(content_type.upper()))
                 filtered.append(content)
+            else:
+                print(LogMessages.GRADE_NOT_RELEVANT.format(content_type.upper()))
         return filtered
 
     node_contents = await filter_contents(state["node_contents"], "NODE")
     edge_contents = await filter_contents(state["edge_contents"], "EDGE")
 
-    return {"node_contents": node_contents, "edge_contents": edge_contents}
+    return {
+        "node_contents": node_contents,
+        "edge_contents": edge_contents,
+        "citations": citations,
+    }
 
 
 async def query_transformation(state: GraphState) -> dict:
     """Transform the query for better retrieval."""
-    print("---QUERY TRANSFORMATION---")
+    print(LogMessages.QUERY_TRANSFORMATION)
+    current_retry = state.get("retry_count", 0)
+    print(
+        LogMessages.RETRY_COUNT_INFO.format(current_retry + 1, Defaults.MAX_RETRY_COUNT)
+    )
     try:
         refined = await question_rewriter.ainvoke({"question": state["question"]})
-        return {"question": refined.refined_question}
+        return {"question": refined.refined_question, "retry_count": current_retry + 1}
     except Exception as e:
-        print(f"---ERROR IN QUERY TRANSFORMATION: {e}---")
-        return {"question": state["question"]}
+        print(LogMessages.ERROR_IN.format("QUERY TRANSFORMATION", e))
+        return {"question": state["question"], "retry_count": current_retry + 1}
 
 
 async def web_search(state: GraphState) -> dict:
     """Perform a web search to gather relevant content."""
-    print("---WEB SEARCH---")
-    web_search_tool = TavilySearch(max_results=state.get("n_requests", 3))
+    print(LogMessages.WEB_SEARCH)
+    web_search_tool = TavilySearch(
+        max_results=state.get("n_web_searches", Defaults.N_WEB_SEARCHES)
+    )
     try:
-        import pdb
-
-        pdb.set_trace()
         search_results = await web_search_tool.ainvoke({"query": state["question"]})
         search_contents = [result["content"] for result in search_results["results"]]
         search_citations = [
             {"title": result["title"], "url": result["url"]}
             for result in search_results["results"]
         ]
-        return {"web_contents": search_contents, "web_citations": search_citations}
+        return {"web_contents": search_contents, "citations": search_citations}
     except Exception as e:
-        print(f"---ERROR IN WEB SEARCH: {e}---")
-        return {"web_contents": [], "web_citations": []}
+        print(LogMessages.ERROR_IN.format("WEB SEARCH", e))
+        return {"web_contents": [], "citations": []}

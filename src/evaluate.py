@@ -8,6 +8,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from ragas import SingleTurnSample
 from ragas.llms import LangchainLLMWrapper
 from ragas.metrics import AnswerAccuracy
+from src.settings import settings
 
 
 def save_json(data: dict, path: str):
@@ -41,8 +42,7 @@ async def main(
                 model="gemini-2.5-pro",
                 temperature=0.0,
                 model_kwargs={"seed": 42},
-                # google_api_key=settings.llm_api_key,
-                google_api_key="AIzaSyCJEHXFRh_tbiAkiIV55ieydAHLpJjJaCA",
+                google_api_key=settings.llm_api_key,
             )
         )
 
@@ -92,8 +92,12 @@ async def main(
         num_samples += 1
 
     print(f"Number of samples: {num_samples}")
-    print(f"Number of passed samples: {num_passed} ({num_passed / num_samples * 100:.2f}%)")
-    print(f"Number of failed samples: {num_failed} ({num_failed / num_samples * 100:.2f}%)")
+    print(
+        f"Number of passed samples: {num_passed} ({num_passed / num_samples * 100:.2f}%)"
+    )
+    print(
+        f"Number of failed samples: {num_failed} ({num_failed / num_samples * 100:.2f}%)"
+    )
     print(f"Average time to retrieval: {time_to_retrieval / num_samples}")
     print(f"Average time to generation: {time_to_generation / num_samples}")
     print(f"Average score: {sum_score / num_samples}")

@@ -6,8 +6,10 @@ from src.core.tools import Tools
 class RouteQuery(BaseModel):
     """Route a user query to the most relevant data_source."""
 
-    data_source: Literal[Tools.KG_RETRIEVAL.value, Tools.WEB_SEARCH.value] = Field(
-        description="Route to web search or knowledge graph retrieval."
+    data_source: Literal[
+        Tools.KG_RETRIEVAL.value, Tools.WEB_SEARCH.value, Tools.LLM_INTERNAL.value
+    ] = Field(
+        description="Route to knowledge graph retrieval for durian pest/disease domain questions, web search for latest pest/disease information, or LLM internal knowledge for out-of-domain questions."
     )
 
 
