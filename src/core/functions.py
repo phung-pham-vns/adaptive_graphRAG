@@ -51,6 +51,9 @@ class GraphState(TypedDict):
     edge_retrieval: bool
     episode_retrieval: bool
     community_retrieval: bool
+    node_citations: list[dict[str, str]]
+    edge_citations: list[dict[str, str]]
+    web_citations: list[dict[str, str]]
     n_retrieved_documents: int
     n_web_searches: int
     citations: list[dict[str, str]]
@@ -79,7 +82,7 @@ async def search_durian_pest_and_disease_knowledge(
     edge_retrieval: bool = Defaults.EDGE_RETRIEVAL,
     episode_retrieval: bool = Defaults.EPISODE_RETRIEVAL,
     community_retrieval: bool = Defaults.COMMUNITY_RETRIEVAL,
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], list[dict[str, str]], list[dict[str, str]]]:
     """Search knowledge graph for durian pest and disease information."""
     try:
         graphiti = await GraphitiClient().create_client(
@@ -138,20 +141,19 @@ async def search_durian_pest_and_disease_knowledge(
         results = await graphiti.search_(query=question, config=search_config)
         node_contents, edge_contents = await get_node_and_edge_contents(results)
 
-        citations = []
+        node_citations = []
+        edge_citations = []
         for node in results.nodes:
             document_id = node.group_id
             document_name = DOCUMENT_ID_TO_DOCUMENT_NAME.get(document_id, None)
-            if (document_name is not None) and (document_name not in citations):
-                citations.append({"title": document_name})
+            node_citations.append({"title": document_name})
 
         for edge in results.edges:
             document_id = edge.group_id
             document_name = DOCUMENT_ID_TO_DOCUMENT_NAME.get(document_id, None)
-            if (document_name is not None) and (document_name not in citations):
-                citations.append({"title": document_name})
+            edge_citations.append({"title": document_name})
 
-        return node_contents, edge_contents, citations
+        return node_contents, edge_contents, node_citations, edge_citations
     except Exception as e:
         print(LogMessages.ERROR_IN.format("KNOWLEDGE GRAPH SEARCH", e))
         return [], [], []
@@ -161,7 +163,9 @@ def format_context(
     node_contents: list[str],
     edge_contents: list[str],
     web_contents: list[str],
-    citations: list[dict[str, str]],
+    node_citations: list[dict[str, str]],
+    edge_citations: list[dict[str, str]],
+    web_citations: list[dict[str, str]],
 ) -> str:
     """Format node, edge, web contents, and citations into a single context string."""
     context_parts = []
@@ -180,8 +184,14 @@ def format_context(
     if web_contents:
         context_parts.append(_format_list(web_contents, "Web Information"))
 
-    if citations:
-        context_parts.append(_format_list(citations, "Citations"))
+    if node_citations:
+        context_parts.append(_format_list(node_citations, "Node Citations"))
+
+    if edge_citations:
+        context_parts.append(_format_list(edge_citations, "Edge Citations"))
+
+    if web_citations:
+        context_parts.append(_format_list(web_citations, "Web Citations"))
 
     return "".join(context_parts)
 
@@ -189,16 +199,25 @@ def format_context(
 async def knowledge_graph_retrieval(state: GraphState) -> dict:
     """Retrieve nodes and edges from the knowledge graph."""
     print(LogMessages.KNOWLEDGE_GRAPH_RETRIEVAL)
-    node_contents, edge_contents, citations = (
+    node_contents, edge_contents, node_citations, edge_citations = (
         await search_durian_pest_and_disease_knowledge(
             question=state["question"],
+            node_retrieval=state.get("node_retrieval", Defaults.NODE_RETRIEVAL),
+            edge_retrieval=state.get("edge_retrieval", Defaults.EDGE_RETRIEVAL),
+            episode_retrieval=state.get(
+                "episode_retrieval", Defaults.EPISODE_RETRIEVAL
+            ),
+            community_retrieval=state.get(
+                "community_retrieval", Defaults.COMMUNITY_RETRIEVAL
+            ),
             limit=state.get("n_retrieved_documents", Defaults.N_RETRIEVED_DOCUMENTS),
         )
     )
     return {
         "node_contents": node_contents,
         "edge_contents": edge_contents,
-        "citations": citations,
+        "node_citations": node_citations,
+        "edge_citations": edge_citations,
     }
 
 
@@ -207,7 +226,9 @@ async def answer_generation(state: GraphState) -> dict:
     node_contents = state.get("node_contents", [])
     edge_contents = state.get("edge_contents", [])
     web_contents = state.get("web_contents", [])
-    citations = state.get("citations", [])
+    node_citations = state.get("node_citations", [])
+    edge_citations = state.get("edge_citations", [])
+    web_citations = state.get("web_citations", [])
 
     # Check if any context is available
     has_context = bool(node_contents or edge_contents or web_contents)
@@ -215,7 +236,28 @@ async def answer_generation(state: GraphState) -> dict:
     if has_context:
         # Generate answer with context
         print(LogMessages.ANSWER_GENERATION)
-        context = format_context(node_contents, edge_contents, web_contents, citations)
+        context = format_context(
+            node_contents,
+            edge_contents,
+            web_contents,
+            node_citations,
+            edge_citations,
+            web_citations,
+        )
+
+        citations = []
+        for citation in node_citations:
+            if citation not in citations:
+                citations.append(citation)
+
+        for citation in edge_citations:
+            if citation not in citations:
+                citations.append(citation)
+
+        for citation in web_citations:
+            if citation not in citations:
+                citations.append(citation)
+
         try:
             generation = await answer_generator.ainvoke(
                 {"context": context, "question": state["question"]}
@@ -243,34 +285,44 @@ async def retrieved_documents_grading(state: GraphState) -> dict:
     """Grade the relevance of node and edge contents."""
     print(LogMessages.CHECK_DOCUMENT_RELEVANCE)
     question = state["question"]
-    citations = state.get("citations", [])
+    edge_citations = state.get("edge_citations", [])
+    node_citations = state.get("node_citations", [])
 
-    async def filter_contents(contents: list[str], content_type: str) -> list[str]:
+    async def filter_contents_and_citations(
+        contents: list[str], citations: list[dict[str, str]], content_type: str
+    ) -> tuple[list[str], list[dict[str, str]]]:
         tasks = [
             retrieval_grader.ainvoke({"question": question, "document": content})
             for content in contents
         ]
         scores = await asyncio.gather(*tasks, return_exceptions=True)
-        filtered = []
-        for content, score in zip(contents, scores):
+        filtered_contents = []
+        filtered_citations = []
+        for i, (content, score) in enumerate(zip(contents, scores)):
             if isinstance(score, Exception):
                 print(LogMessages.ERROR_GRADING.format(content_type.upper(), score))
                 continue
             grade = score.binary_score
             if grade == BinaryScore.YES:
                 print(LogMessages.GRADE_RELEVANT.format(content_type.upper()))
-                filtered.append(content)
+                filtered_contents.append(content)
+                filtered_citations.append(citations[i])
             else:
                 print(LogMessages.GRADE_NOT_RELEVANT.format(content_type.upper()))
-        return filtered
+        return filtered_contents, filtered_citations
 
-    node_contents = await filter_contents(state["node_contents"], "NODE")
-    edge_contents = await filter_contents(state["edge_contents"], "EDGE")
+    node_contents, node_citations = await filter_contents_and_citations(
+        state["node_contents"], state.get("node_citations", []), "NODE"
+    )
+    edge_contents, edge_citations = await filter_contents_and_citations(
+        state["edge_contents"], state.get("edge_citations", []), "EDGE"
+    )
 
     return {
         "node_contents": node_contents,
         "edge_contents": edge_contents,
-        "citations": citations,
+        "edge_citations": edge_citations,
+        "node_citations": node_citations,
     }
 
 
@@ -302,7 +354,7 @@ async def web_search(state: GraphState) -> dict:
             {"title": result["title"], "url": result["url"]}
             for result in search_results["results"]
         ]
-        return {"web_contents": search_contents, "citations": search_citations}
+        return {"web_contents": search_contents, "web_citations": search_citations}
     except Exception as e:
         print(LogMessages.ERROR_IN.format("WEB SEARCH", e))
-        return {"web_contents": [], "citations": []}
+        return {"web_contents": [], "web_citations": []}
