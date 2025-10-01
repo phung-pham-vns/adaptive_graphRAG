@@ -50,7 +50,8 @@ async def run_workflow_internal(
     episode_retrieval: bool,
     community_retrieval: bool,
     enable_retrieved_document_grading: bool,
-    enable_generation_grading: bool,
+    enable_hallucination_checking: bool,
+    enable_answer_quality_checking: bool,
 ) -> Dict[str, Any]:
     """Run the workflow and track execution with timing."""
     global _current_workflow_steps, _current_citations, _last_step_time, _workflow_start_time
@@ -64,7 +65,8 @@ async def run_workflow_internal(
     workflow = (
         await build_workflow(
             enable_retrieved_document_grading=enable_retrieved_document_grading,
-            enable_generation_grading=enable_generation_grading,
+            enable_hallucination_checking=enable_hallucination_checking,
+            enable_answer_quality_checking=enable_answer_quality_checking,
         )
     ).compile()
 
@@ -191,20 +193,23 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
     - Retrieves relevant documents (for KG and Web routes)
     - Optionally grades documents for relevance (if `enable_retrieved_document_grading=true`)
     - Generates an answer
-    - Optionally checks answer quality via combined two-step process (if `enable_generation_grading=true`):
-        1. Hallucination check: Verifies answer is grounded in context
-        2. Answer quality check: Validates answer addresses the question (only runs if grounded)
+    - Optionally checks answer grounding and quality (independently configurable)
     - Returns the answer with citations and workflow steps
+
+    **Generation Grading Options:**
+    You can independently control two types of generation checks:
+    - **Hallucination Checking** (`enable_hallucination_checking`): Verifies answer is grounded in context
+        * If not grounded → regenerate answer
+    - **Answer Quality Checking** (`enable_answer_quality_checking`): Validates answer addresses the question
+        * If doesn't address question → transform query and retry
+
+    These can be enabled independently or together for maximum quality control.
 
     **Performance Optimization:**
     - Set `enable_retrieved_document_grading=false` to skip document filtering (~2s faster)
-    - Set `enable_generation_grading=false` to skip both quality checks (~3-5s faster)
-    - Both disabled = maximum speed (~5-7s faster) but lower quality
-
-    **Generation Grading Details:**
-    When enabled, the workflow performs two sequential checks in one decision point:
-    - **Hallucination Detection**: If answer is not grounded → regenerate
-    - **Answer Quality**: If grounded but doesn't address question → transform query and retry
+    - Set `enable_hallucination_checking=false` to skip grounding check (~1-2s faster)
+    - Set `enable_answer_quality_checking=false` to skip quality check (~2-3s faster)
+    - All checks disabled = maximum speed (~5-7s faster) but lower quality
 
     **Example Request:**
     ```json
@@ -217,7 +222,8 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
         "episode_retrieval": true,
         "community_retrieval": true,
         "enable_retrieved_documents_grading": true,
-        "enable_generation_grading": true
+        "enable_hallucination_checking": true,
+        "enable_answer_quality_checking": true
     }
     ```
     """
@@ -232,7 +238,8 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
             episode_retrieval=request.episode_retrieval,
             community_retrieval=request.community_retrieval,
             enable_retrieved_document_grading=request.enable_retrieved_documents_grading,
-            enable_generation_grading=request.enable_generation_grading,
+            enable_hallucination_checking=request.enable_hallucination_checking,
+            enable_answer_quality_checking=request.enable_answer_quality_checking,
         )
 
         # Calculate total processing time
@@ -253,7 +260,8 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
                 "episode_retrieval": request.episode_retrieval,
                 "community_retrieval": request.community_retrieval,
                 "document_grading_enabled": request.enable_retrieved_documents_grading,
-                "generation_grading_enabled": request.enable_generation_grading,
+                "hallucination_checking_enabled": request.enable_hallucination_checking,
+                "answer_quality_checking_enabled": request.enable_answer_quality_checking,
                 "total_steps": len(result["workflow_steps"]),
                 "total_citations": len(result["citations"]),
                 "total_processing_time": round(total_time, 3),
@@ -319,7 +327,8 @@ async def run_workflow_simple(request: WorkflowRequest) -> Dict[str, str]:
             episode_retrieval=request.episode_retrieval,
             community_retrieval=request.community_retrieval,
             enable_retrieved_document_grading=request.enable_retrieved_documents_grading,
-            enable_generation_grading=request.enable_generation_grading,
+            enable_hallucination_checking=request.enable_hallucination_checking,
+            enable_answer_quality_checking=request.enable_answer_quality_checking,
         )
 
         if not result["success"]:

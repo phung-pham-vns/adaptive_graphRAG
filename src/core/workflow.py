@@ -149,13 +149,15 @@ async def grade_generation_and_question(
 
 async def build_workflow(
     enable_retrieved_document_grading: bool = Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
-    enable_generation_grading: bool = Defaults.ENABLE_GENERATION_GRADING,
+    enable_hallucination_checking: bool = Defaults.ENABLE_HALLUCINATION_CHECKING,
+    enable_answer_quality_checking: bool = Defaults.ENABLE_ANSWER_QUALITY_CHECKING,
 ) -> StateGraph[GraphState]:
     """Build and configure the LangGraph workflow with optional optimization flags.
 
     Args:
         enable_retrieved_document_grading: If True, grade retrieved documents for relevance
-        enable_generation_grading: If True, check generated answers for hallucinations and quality
+        enable_hallucination_checking: If True, check if generated answer is grounded in context
+        enable_answer_quality_checking: If True, check if generated answer addresses the question
     """
     workflow = StateGraph(GraphState)
 
@@ -200,10 +202,15 @@ async def build_workflow(
 
     workflow.add_edge("query_transformation", "knowledge_graph_retrieval")
 
-    # Configure answer generation flow based on generation grading flag
-    if enable_generation_grading:
-        # With grading: check hallucination first, then answer quality
-        # Add a passthrough node for answer quality checking
+    # Configure answer generation flow based on grading flags
+    # We need to handle 4 cases:
+    # 1. Both enabled: hallucination → quality → end
+    # 2. Only hallucination: hallucination → end
+    # 3. Only quality: quality → end
+    # 4. Neither: direct → end
+
+    if enable_hallucination_checking and enable_answer_quality_checking:
+        # Both checks enabled: chain them together
         async def answer_quality_check(state: GraphState) -> GraphState:
             """Passthrough node for answer quality checking routing."""
             return state
@@ -229,8 +236,28 @@ async def build_workflow(
                 RouteDecision.CORRECT: END,  # End if useful
             },
         )
+    elif enable_hallucination_checking:
+        # Only hallucination check enabled
+        workflow.add_conditional_edges(
+            "answer_generation",
+            grade_generation_and_context,
+            {
+                RouteDecision.NOT_GROUNDED: "answer_generation",  # Retry generation if hallucinating
+                RouteDecision.GROUNDED: END,  # End if grounded
+            },
+        )
+    elif enable_answer_quality_checking:
+        # Only answer quality check enabled
+        workflow.add_conditional_edges(
+            "answer_generation",
+            grade_generation_and_question,
+            {
+                RouteDecision.INCORRECT: "query_transformation",  # Transform query if not useful
+                RouteDecision.CORRECT: END,  # End if useful
+            },
+        )
     else:
-        # Without grading: answer directly ends workflow
+        # Neither check enabled: answer directly ends workflow
         workflow.add_edge("answer_generation", END)
 
     return workflow
@@ -245,13 +272,15 @@ async def run_workflow(
     episode_retrieval: bool = Defaults.EPISODE_RETRIEVAL,
     community_retrieval: bool = Defaults.COMMUNITY_RETRIEVAL,
     enable_retrieved_document_grading: bool = Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
-    enable_generation_grading: bool = Defaults.ENABLE_GENERATION_GRADING,
+    enable_hallucination_checking: bool = Defaults.ENABLE_HALLUCINATION_CHECKING,
+    enable_answer_quality_checking: bool = Defaults.ENABLE_ANSWER_QUALITY_CHECKING,
 ) -> None:
     """Run the workflow with the given question and configuration options."""
     workflow = (
         await build_workflow(
             enable_retrieved_document_grading=enable_retrieved_document_grading,
-            enable_generation_grading=enable_generation_grading,
+            enable_hallucination_checking=enable_hallucination_checking,
+            enable_answer_quality_checking=enable_answer_quality_checking,
         )
     ).compile()
     inputs = {
@@ -300,6 +329,7 @@ if __name__ == "__main__":
             episode_retrieval=Defaults.EPISODE_RETRIEVAL,
             community_retrieval=Defaults.COMMUNITY_RETRIEVAL,
             enable_retrieved_document_grading=Defaults.ENABLE_RETRIEVED_DOCUMENTS_GRADING,
-            enable_generation_grading=Defaults.ENABLE_GENERATION_GRADING,
+            enable_hallucination_checking=Defaults.ENABLE_HALLUCINATION_CHECKING,
+            enable_answer_quality_checking=Defaults.ENABLE_ANSWER_QUALITY_CHECKING,
         )
     )

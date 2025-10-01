@@ -41,9 +41,13 @@ class WorkflowRequest(BaseModel):
         default=True,
         description="Enable document relevance grading (slower but higher quality)",
     )
-    enable_generation_grading: bool = Field(
+    enable_hallucination_checking: bool = Field(
         default=True,
-        description="Enable answer quality checking (slower but more accurate)",
+        description="Enable hallucination checking to verify answer is grounded in context",
+    )
+    enable_answer_quality_checking: bool = Field(
+        default=True,
+        description="Enable answer quality checking to verify answer addresses the question",
     )
 
 

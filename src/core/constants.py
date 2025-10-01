@@ -61,7 +61,12 @@ class Defaults:
     MAX_COROUTINES = 1
     MAX_RETRY_COUNT = 3  # Maximum number of query transformation retries
     ENABLE_RETRIEVED_DOCUMENTS_GRADING = True  # Enable retrieved documents grading
-    ENABLE_GENERATION_GRADING = True  # Enable hallucination and answer quality checking
+    ENABLE_HALLUCINATION_CHECKING = (
+        True  # Enable hallucination checking (grounding check)
+    )
+    ENABLE_ANSWER_QUALITY_CHECKING = (
+        True  # Enable answer quality checking (addresses question check)
+    )
 
 
 # Document Mapping Information that get from indexing pipeline {document_id: document_name}
