@@ -30,7 +30,6 @@ _workflow_start_time = None
 def add_workflow_step(
     step_name: str, processing_time: float, details: Dict[str, Any] = None
 ):
-    """Add a workflow step to the current execution with timing."""
     step = {
         "name": step_name,
         "timestamp": datetime.now().strftime("%H:%M:%S"),
@@ -52,7 +51,6 @@ async def run_workflow_internal(
     enable_hallucination_checking: bool,
     enable_answer_quality_checking: bool,
 ) -> Dict[str, Any]:
-    """Run the workflow and track execution with timing."""
     global _current_workflow_steps, _current_citations, _last_step_time, _workflow_start_time
 
     # Clear previous execution data

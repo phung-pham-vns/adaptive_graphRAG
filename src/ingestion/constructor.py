@@ -6,7 +6,7 @@ from datetime import datetime
 
 from graphiti_core.nodes import EpisodeType
 
-from src.core.graphiti_client import GraphitiClient
+from src.core.graphiti import GraphitiClient
 from src.logger import setup_logging
 
 
@@ -40,13 +40,19 @@ def load_documents(file_paths: list[Path]) -> list[dict[str, any]]:
         }
 
         if not isinstance(data, list):
-            logger.warning("Expected a list in %s, got %s; skipping.", file_path, type(data).__name__)
+            logger.warning(
+                "Expected a list in %s, got %s; skipping.",
+                file_path,
+                type(data).__name__,
+            )
             continue
 
         for item in data:
             # Text
             if item.get("text") is not None:
-                content = (item["text"].get("text_translated") or "") or (item["text"].get("content") or "")
+                content = (item["text"].get("text_translated") or "") or (
+                    item["text"].get("content") or ""
+                )
                 if content:
                     document["chunks"].append({"id": item["id"], "text": content})
                     document["text_chunk"] += 1
@@ -99,7 +105,13 @@ async def main(
             document_id = document["id"]
             chunks = document["chunks"]
 
-            logger.info("Processing document %d/%d - %s (%d chunks)", i, total_docs, file_name, len(chunks))
+            logger.info(
+                "Processing document %d/%d - %s (%d chunks)",
+                i,
+                total_docs,
+                file_name,
+                len(chunks),
+            )
 
             for j, chunk in enumerate(chunks, start=1):
                 try:
@@ -115,11 +127,20 @@ async def main(
                         # edge_types=EDGE_TYPES,
                         # edge_type_map=EDGE_TYPE_MAP,
                     )
-                    logger.info("Chunk %d/%d for %s processed successfully.", j, len(chunks), file_name)
+                    logger.info(
+                        "Chunk %d/%d for %s processed successfully.",
+                        j,
+                        len(chunks),
+                        file_name,
+                    )
                     successful_chunks += 1
                 except Exception as e:
                     logger.exception(
-                        "Error processing chunk %d/%d for %s. Chunk ID: %s", j, len(chunks), file_name, chunk["id"]
+                        "Error processing chunk %d/%d for %s. Chunk ID: %s",
+                        j,
+                        len(chunks),
+                        file_name,
+                        chunk["id"],
                     )
                     failed_chunks += 1
                     continue

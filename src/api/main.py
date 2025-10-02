@@ -22,7 +22,6 @@ from src.settings import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifecycle manager for FastAPI application."""
     # Startup
     print("🚀 Starting Adaptive RAG API...")
     print(f"📊 Environment: {settings.environment}")
@@ -154,7 +153,6 @@ app.include_router(workflow.router)
     description="Returns basic API information",
 )
 async def root():
-    """Root endpoint with API information."""
     return {
         "name": "Adaptive RAG API",
         "version": "0.1.0",
@@ -163,7 +161,6 @@ async def root():
         "health": "/health",
         "endpoints": {
             "workflow_full": "POST /workflow/run",
-            "workflow_simple": "POST /workflow/run-simple",
         },
     }
 
@@ -176,13 +173,11 @@ async def root():
     description="Check if the API is running and healthy",
 )
 async def health_check() -> HealthResponse:
-    """Health check endpoint."""
     return HealthResponse(status="healthy", version="0.1.0")
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    """Global exception handler for unexpected errors."""
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
