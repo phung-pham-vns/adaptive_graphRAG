@@ -1,9 +1,3 @@
-"""CLI script for ingesting documents into knowledge graph.
-
-This script has been refactored to use the IngestionService.
-For API-based ingestion, see src/api/routes/ingestion.py
-"""
-
 import asyncio
 import argparse
 from pathlib import Path

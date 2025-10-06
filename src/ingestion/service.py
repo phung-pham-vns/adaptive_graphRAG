@@ -14,8 +14,8 @@ logger = setup_logging()
 
 class IngestionService:
     def __init__(self):
-        """Initialize the ingestion service."""
         self.graphiti_client: Optional[Any] = None
+        self._client_wrapper: Optional[Any] = None
 
     async def initialize_client(
         self,
@@ -23,26 +23,41 @@ class IngestionService:
         max_coroutines: int = 1,
     ) -> None:
         """
-        Initialize the Graphiti client.
+        Initialize the Graphiti client for ingestion.
 
         Args:
             clear_existing_graphdb_data: Whether to clear existing graph data
-            max_coroutines: Maximum number of concurrent coroutines
+            max_coroutines: Maximum number of concurrent coroutines for parallel processing.
+                           Higher values (3-10) significantly speed up ingestion but use more resources.
+
+        Note:
+            This creates a fresh GraphitiClient instance for ingestion operations.
+            The client should be closed after use by calling close_client().
         """
-        self.graphiti_client = await GraphitiClient().create_client(
+        client = GraphitiClient()
+        self.graphiti_client = await client.create_client(
             clear_existing_graphdb_data=clear_existing_graphdb_data,
             max_coroutines=max_coroutines,
         )
-        logger.info("Graphiti client initialized successfully")
+        # Store the client wrapper for cleanup
+        self._client_wrapper = client
+        logger.info("Graphiti client initialized successfully for ingestion")
 
     async def close_client(self) -> None:
-        """Close the Graphiti client connection."""
-        if self.graphiti_client:
+        """Close the Graphiti client connection and free resources.
+
+        This should always be called after ingestion operations are complete
+        to properly clean up database connections.
+        """
+        if self._client_wrapper:
             try:
-                await self.graphiti_client.driver.close()
+                await self._client_wrapper.close()
                 logger.info("Graphiti client connection closed")
             except Exception:
-                logger.exception("Error while closing the Graphiti driver")
+                logger.exception("Error while closing the Graphiti client")
+
+        self.graphiti_client = None
+        self._client_wrapper = None
 
     def load_documents(self, file_paths: list[Path]) -> list[dict[str, any]]:
         """
