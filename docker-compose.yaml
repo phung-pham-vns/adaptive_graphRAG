@@ -10,7 +10,7 @@ services:
       - "7474:7474"
       - "7687:7687"
     volumes:
-      - v2_durian_pest_and_disease_neo4j_data:/data
+      - durian_pest_and_disease:/data
     healthcheck:
       test: [ "CMD", "cypher-shell", "-u", "neo4j", "-p", "aisac_kg", "RETURN 1" ]
       interval: 10s
@@ -18,4 +18,4 @@ services:
       retries: 3
 
 volumes:
-  v2_durian_pest_and_disease_neo4j_data:
+  durian_pest_and_disease:

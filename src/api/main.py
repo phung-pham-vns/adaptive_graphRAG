@@ -14,6 +14,7 @@ nest_asyncio.apply()
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="grpc")
 
 from src.api.routes import workflow
+from src.api.routes import ingestion
 from src.api.models import HealthResponse
 from src.settings import settings
 
@@ -44,6 +45,7 @@ app = FastAPI(
     - **Smart Routing**: Automatically chooses the best data source based on question type
     - **Two-Stage Quality Control**: Optional document relevance and generation quality grading
     - **Citation Tracking**: Provides sources for all answers
+    - **Knowledge Graph Ingestion**: Ingest and manage documents in the knowledge graph
     
     ## Features
     
@@ -56,11 +58,22 @@ app = FastAPI(
     - 🔍 **Document Grading**: Optional relevance checking of retrieved documents
     - 🎯 **Generation Grading**: Two-step validation (hallucination check → answer quality check)
     - 🔄 **Auto-Retry**: Query transformation when results are poor
+    - 📥 **Document Ingestion**: Ingest documents into knowledge graph via API or file upload
+    - 📊 **Graph Inspection**: View statistics, nodes, and edges in the knowledge graph
     
     ## Endpoints
     
+    ### Workflow
     - `POST /workflow/run`: Full workflow execution with detailed steps and citations
-    - `POST /workflow/run-simple`: Simplified endpoint returning only question and answer
+    
+    ### Ingestion
+    - `POST /ingestion/ingest`: Upload and ingest JSON files
+    - `GET /ingestion/status`: Check ingestion system status
+    - `GET /ingestion/statistics`: Get detailed graph statistics
+    - `GET /ingestion/nodes`: Get sample nodes (with filtering)
+    - `GET /ingestion/edges`: Get sample edges/relationships
+    
+    ### Health
     - `GET /health`: Health check endpoint
     
     ## Quick Start
@@ -143,6 +156,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(workflow.router)
+app.include_router(ingestion.router)
 
 
 @app.get(
@@ -158,7 +172,16 @@ async def root():
         "docs": "/docs",
         "health": "/health",
         "endpoints": {
-            "workflow_full": "POST /workflow/run",
+            "workflow": {
+                "run": "POST /workflow/run",
+            },
+            "ingestion": {
+                "ingest": "POST /ingestion/ingest (file upload)",
+                "status": "GET /ingestion/status",
+                "statistics": "GET /ingestion/statistics",
+                "nodes": "GET /ingestion/nodes",
+                "edges": "GET /ingestion/edges",
+            },
         },
     }
 
