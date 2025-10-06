@@ -3,14 +3,12 @@ from pydantic import BaseModel, Field
 
 
 class WorkflowRequest(BaseModel):
-    """Request model for workflow execution."""
-
     question: str = Field(
         ...,
         description="The question to ask the adaptive RAG system",
         min_length=1,
         max_length=2000,
-        examples=["What causes durian leaf curl?"],
+        examples=["What symptom distinguishes Phomopsis leaf spot?"],
     )
     n_retrieved_documents: int = Field(
         default=3,
@@ -52,8 +50,6 @@ class WorkflowRequest(BaseModel):
 
 
 class WorkflowStep(BaseModel):
-    """Model for a single workflow step."""
-
     name: str = Field(..., description="Name of the workflow step")
     timestamp: str = Field(..., description="Timestamp of step execution (HH:MM:SS)")
     processing_time: float = Field(
@@ -65,16 +61,12 @@ class WorkflowStep(BaseModel):
 
 
 class Citation(BaseModel):
-    """Model for a source citation."""
-
     title: Optional[str] = Field(None, description="Title of the source (for web)")
     url: Optional[str] = Field(None, description="URL of the source (for web)")
     content: Optional[str] = Field(None, description="Content snippet (for KG)")
 
 
 class WorkflowResponse(BaseModel):
-    """Response model for workflow execution."""
-
     success: bool = Field(
         ..., description="Whether the workflow completed successfully"
     )
@@ -92,15 +84,11 @@ class WorkflowResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Health check response."""
-
     status: str = Field(..., description="Service status")
     version: str = Field(..., description="API version")
 
 
 class ErrorResponse(BaseModel):
-    """Error response model."""
-
     error: str = Field(..., description="Error message")
     detail: Optional[str] = Field(None, description="Detailed error information")
     question: Optional[str] = Field(

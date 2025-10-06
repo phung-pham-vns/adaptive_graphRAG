@@ -351,18 +351,14 @@ async def run_workflow(
         async for output in workflow.astream(inputs):
             for key, value in output.items():
                 print(f"Node '{key.upper()}'")
-        print("=" * 80)
-        print(f"Final Answer: {value.get('generation', 'No final answer generated.')}")
-        print(f"Citations:")
+        answer = value.get("generation", "No final answer generated.")
         citations = value.get("citations", [])
-        for citation in citations:
-            print(f"  - Title: {citation.get('title')}")
-            print(f"  - URL: {citation.get('url', None)}")
-        print("=" * 80)
-        print()
+
+        return {"answer": answer, "citations": citations}
 
     except Exception as e:
         print(f"Error during workflow execution: {e}")
+        return {"answer": "No final answer generated.", "citations": []}
 
 
 # Example usage
@@ -511,7 +507,7 @@ if __name__ == "__main__":
     print()
 
     # Run workflow
-    asyncio.run(
+    response = asyncio.run(
         run_workflow(
             question=args.question,
             n_retrieved_documents=args.n_retrieved_documents,
@@ -525,3 +521,13 @@ if __name__ == "__main__":
             enable_answer_quality_checking=args.enable_answer_quality_checking,
         )
     )
+
+    print("=" * 80)
+    print(f"Final Answer: {response['answer']}")
+    print(f"Citations:")
+    citations = response["citations"]
+    for citation in citations:
+        print(f"  - Title: {citation.get('title')}")
+        print(f"  - URL: {citation.get('url', None)}")
+    print("=" * 80)
+    print()
