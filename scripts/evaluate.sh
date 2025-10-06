@@ -113,7 +113,7 @@ main() {
             print_info "Starting data ingestion..."
             check_env
             shift
-            python -m src.evaluation.ingest_langsmith "$@"
+            python -m src.evaluation.ingest_langsmith_new "$@"
             print_success "Data ingestion complete!"
             ;;
             
@@ -121,39 +121,45 @@ main() {
             print_info "Starting evaluation..."
             check_env
             shift
-            python -m src.evaluation.evaluate_langsmith "$@"
+            python -m src.evaluation.evaluate_langsmith_new "$@"
             print_success "Evaluation complete!"
             ;;
             
         quick)
             print_info "Running quick test evaluation..."
             check_env
-            python -m src.evaluation.evaluate_langsmith --config quick
+            python -m src.evaluation.evaluate_langsmith_new --preset quick
             print_success "Quick evaluation complete!"
             ;;
             
         full)
             print_info "Running full evaluation with balanced configuration..."
             check_env
-            python -m src.evaluation.evaluate_langsmith --config balanced
+            python -m src.evaluation.evaluate_langsmith_new --preset balanced
             print_success "Full evaluation complete!"
             ;;
             
         accuracy)
             print_info "Running accuracy-focused evaluation..."
             check_env
-            python -m src.evaluation.evaluate_langsmith --config accuracy
+            python -m src.evaluation.evaluate_langsmith_new --preset accuracy
             print_success "Accuracy evaluation complete!"
             ;;
             
         compare)
             print_info "Showing configuration comparison..."
-            python -m src.evaluation.evaluate_langsmith --compare-configs
+            python -m src.evaluation.evaluate_langsmith_new --help
             ;;
             
         list)
-            print_info "Available configurations:"
-            python -m src.evaluation.evaluate_langsmith --list-configs
+            print_info "Available configurations (presets):"
+            echo "  - quick          : Quick test (speed-focused)"
+            echo "  - balanced       : Balanced performance (default)"
+            echo "  - accuracy       : Accuracy-focused (thorough)"
+            echo "  - minimal        : Minimal retrieval test"
+            echo "  - no_checks      : No quality checks (baseline)"
+            echo "  - graph_only     : Knowledge graph only"
+            echo "  - web_fallback   : Heavy web search"
             ;;
             
         help|--help|-h)
@@ -171,4 +177,5 @@ main() {
 
 # Run main function
 main "$@"
+
 
