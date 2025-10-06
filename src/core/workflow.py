@@ -23,22 +23,28 @@ from src.core.constants import BinaryScore, LogMessages, RouteDecision, Defaults
 async def route_question(
     state: GraphState,
 ) -> Literal["web_search", "kg_retrieval", "answer_generation"]:
-    """Route the question to the appropriate data source."""
+    """Route the question to the appropriate data source based on intelligent classification."""
     print(LogMessages.ROUTE_QUESTION)
     try:
         source = await question_router.ainvoke({"question": state["question"]})
         route = source.data_source
-        print(LogMessages.ROUTE_TO.format(route.upper()))
+        
+        # Determine routing reason for better observability
+        route_reasons = {
+            RouteDecision.KG_RETRIEVAL: "Durian pest/disease domain question requiring knowledge base",
+            RouteDecision.WEB_SEARCH: "Request for latest/recent information",
+            RouteDecision.LLM_INTERNAL: "Out-of-domain question",
+        }
+        reason = route_reasons.get(route, "Default routing")
+        print(LogMessages.ROUTE_TO.format(route.upper(), reason))
+        
         # If llm_internal, route directly to answer_generation (with no context)
         if route == RouteDecision.LLM_INTERNAL:
             return RouteDecision.ANSWER_GENERATION
         return route
     except Exception as e:
-        print(
-            LogMessages.ERROR_IN.format(
-                "ROUTING", f"{e}, DEFAULTING TO ANSWER GENERATION"
-            )
-        )
+        print(LogMessages.ERROR_IN.format("ROUTING", str(e)))
+        print("  → Defaulting to ANSWER_GENERATION")
         return RouteDecision.ANSWER_GENERATION
 
 
@@ -59,7 +65,7 @@ async def decide_to_generate(
                 LogMessages.MAX_RETRIES_REACHED.format(
                     current_retry,
                     Defaults.MAX_QUERY_TRANSFORMATION_RETRIES,
-                    "WEB SEARCH",
+                    "Falling back to WEB SEARCH",
                 )
             )
             return RouteDecision.WEB_SEARCH
@@ -105,7 +111,7 @@ async def grade_generation_and_context(
                     LogMessages.MAX_RETRIES_REACHED.format(
                         current_hallucination_retry,
                         Defaults.MAX_HALLUCINATION_RETRIES,
-                        "GROUNDED (BEST EFFORT)",
+                        "Proceeding with best-effort answer",
                     )
                 )
                 # Return as grounded to end workflow with best effort answer
@@ -155,10 +161,10 @@ async def grade_generation_and_question(
                 LogMessages.MAX_RETRIES_REACHED.format(
                     current_retry,
                     Defaults.MAX_QUERY_TRANSFORMATION_RETRIES,
-                    "END (BEST EFFORT)",
+                    "Ending workflow with best-effort answer",
                 )
             )
-            # Return as corect to end workflow with best effort answer
+            # Return as correct to end workflow with best effort answer
             return RouteDecision.CORRECT
 
         print(LogMessages.DECISION_NOT_ADDRESSES_QUESTION)
