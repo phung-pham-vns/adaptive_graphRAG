@@ -1,5 +1,3 @@
-"""FastAPI main application."""
-
 import warnings
 from contextlib import asynccontextmanager
 

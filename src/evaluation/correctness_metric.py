@@ -51,14 +51,12 @@ def correctness_evaluator(inputs: dict, outputs: dict, reference_outputs: dict) 
 if __name__ == "__main__":
     print(
         correctness_evaluator(
+            {"question": "Benomyl, how use?"},
             {
-                "question": "What is the first non-chemical step for longhorn stem borer when I find frass under bark?"
+                "response": "Benomyl is a fungicide used to prevent and control Anthracnose, pink disease outbreaks, and Powdery Mildew in Durian. To control Rust Spot and Algal Spot Disease, spray Benomyl all over the plant, and for leaf blight and anthracnose, spray the entire canopy every 7-10 days."
             },
             {
-                "response": "The first non-chemical step for longhorn stem borer when you find frass under bark is regular inspection for frass and damage, followed by pest destruction. You can also prune and burn infested branches. These actions help prevent the borers from multiplying and spreading."
-            },
-            {
-                "answer": "Physically locate and remove or destroy infested tissues and seal active holes."
+                "answer": "Benomyl is sprayed over the leaves and canopy every 7-10 days for Leaf blight disease."
             },
         )
     )

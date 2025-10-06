@@ -9,7 +9,7 @@ question_routing_prompt = ChatPromptTemplate.from_messages(
             """You are an expert at routing a user question to the most appropriate source:
             
             1. **kg_retrieval**: Use for questions about durian pests and diseases that require domain-specific knowledge (symptoms, treatments, identification, etc.)
-            2. **web_search**: Use for questions about durian pests/diseases that need latest/recent information or updates
+            2. **web_search**: Use for questions about durian pests/diseases that need only latest/recent information or updates
             3. **llm_internal**: Use for questions that are NOT related to durian, pests, or diseases (general questions, greetings, other topics)
 
             Examples:
