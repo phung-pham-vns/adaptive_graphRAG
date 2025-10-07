@@ -12,7 +12,7 @@ services:
       - ./openwebui_pipeline.py:/app/backend/data/pipelines/openwebui_pipeline.py
     environment:
       # OpenWebUI Configuration
-      - WEBUI_NAME=Durian Pest & Disease Assistant
+      - WEBUI_NAME=PlantDoctor
       - WEBUI_URL=http://localhost:3000
 
       # Enable pipelines

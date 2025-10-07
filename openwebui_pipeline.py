@@ -1,7 +1,13 @@
 import asyncio
 import requests
+import logging
+from datetime import datetime
 from pydantic import BaseModel, Field
 from typing import Callable, Awaitable, Optional
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class Pipe:
@@ -54,6 +60,11 @@ class Pipe:
         :param __event_emitter__: Event emitter for status updates
         :return: Generated answer with citations and workflow information
         """
+        
+        # Log execution start
+        request_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        logger.info(f"[{request_id}] ========== PIPELINE EXECUTION START ==========")
+        logger.info(f"[{request_id}] User: {__user__.get('name', 'Unknown') if __user__ else 'Unknown'}")
 
         # Extract question from messages
         messages = body.get("messages", [])
@@ -68,10 +79,14 @@ class Pipe:
                 break
 
         if not question:
+            logger.warning(f"[{request_id}] No question found in messages")
             return "❌ No question found in messages."
 
+        logger.info(f"[{request_id}] Question: {question[:100]}...")
+        
         # Get selected model
         model_id = body.get("model", "naive_graph_rag")
+        logger.info(f"[{request_id}] Model: {model_id}")
 
         # Determine mode from model
         if "naive_graph_rag" in model_id:
@@ -89,7 +104,7 @@ class Pipe:
                     },
                 }
             )
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.1)
 
         try:
             # Get configuration
@@ -102,6 +117,7 @@ class Pipe:
             }
 
             # Call API
+            logger.info(f"[{request_id}] Calling API: {self.valves.API_BASE_URL}/workflow/run")
             response = requests.post(
                 f"{self.valves.API_BASE_URL}/workflow/run",
                 json=payload,
@@ -110,6 +126,7 @@ class Pipe:
             )
             response.raise_for_status()
             data = response.json()
+            logger.info(f"[{request_id}] API call successful")
 
             # Check success
             if not data.get("success", False):
@@ -128,7 +145,7 @@ class Pipe:
                             },
                         }
                     )
-                    await asyncio.sleep(0.3)
+                    await asyncio.sleep(0.05)
 
             # Emit completion
             metadata = data.get("metadata", {})
@@ -146,9 +163,11 @@ class Pipe:
                     }
                 )
 
+            logger.info(f"[{request_id}] ========== PIPELINE EXECUTION END ==========")
             return self.format_response(data)
 
         except requests.exceptions.Timeout:
+            logger.error(f"[{request_id}] Request timeout")
             return (
                 f"⏱️ **Request timed out** after {self.valves.TIMEOUT_SECONDS}s\n\n"
                 "**Suggestions:**\n"
@@ -158,6 +177,7 @@ class Pipe:
             )
 
         except requests.exceptions.ConnectionError:
+            logger.error(f"[{request_id}] Connection error to {self.valves.API_BASE_URL}")
             return (
                 f"🔌 **Cannot connect to API** at `{self.valves.API_BASE_URL}`\n\n"
                 "**Troubleshooting steps:**\n"
@@ -173,12 +193,14 @@ class Pipe:
             )
 
         except requests.exceptions.HTTPError as e:
+            logger.error(f"[{request_id}] HTTP error: {e.response.status_code}")
             return (
                 f"❌ **API Error** {e.response.status_code}\n\n"
                 f"```\n{e.response.text[:500]}\n```"
             )
 
         except Exception as e:
+            logger.error(f"[{request_id}] Unexpected error: {str(e)}")
             return f"❌ **Unexpected error:** {str(e)}"
 
     def get_request_body(self, mode: str) -> dict:
