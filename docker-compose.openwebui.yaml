@@ -29,6 +29,10 @@ services:
       # Optional: Enable RAG (if you want to use OpenWebUI's built-in RAG too)
       # - ENABLE_RAG=true
 
+      - ENABLE_TAGS_GENERATION=false
+      - ENABLE_FOLLOW_UP_GENERATION=false
+      - ENABLE_TITLE_GENERATION=false
+
     restart: unless-stopped
 
     networks:
