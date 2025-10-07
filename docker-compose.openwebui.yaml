@@ -1,3 +1,5 @@
+# https://docs.openwebui.com/getting-started/env-configuration/
+
 version: '3.8'
 
 services:
