@@ -1,5 +1,4 @@
-from typing import Literal
-from pprint import pprint
+from typing import Literal, Optional
 
 from langgraph.graph import END, StateGraph, START
 
@@ -23,22 +22,40 @@ from src.core.constants import BinaryScore, LogMessages, RouteDecision, Defaults
 async def route_question(
     state: GraphState,
 ) -> Literal["web_search", "kg_retrieval", "answer_generation"]:
-    """Route the question to the appropriate data source."""
+    """Route the question to the appropriate data source based on intelligent classification."""
     print(LogMessages.ROUTE_QUESTION)
     try:
+        # Check if image is provided - if so, route to VLM_INTERNAL
+        if state.get("image"):
+            print(
+                LogMessages.ROUTE_TO.format(
+                    "VLM_INTERNAL", "Image-based question requiring visual analysis"
+                )
+            )
+            return (
+                RouteDecision.ANSWER_GENERATION
+            )  # VLM_INTERNAL routes to answer_generation
+
         source = await question_router.ainvoke({"question": state["question"]})
         route = source.data_source
-        print(LogMessages.ROUTE_TO.format(route.upper()))
-        # If llm_internal, route directly to answer_generation (with no context)
-        if route == RouteDecision.LLM_INTERNAL:
+
+        # Determine routing reason for better observability
+        route_reasons = {
+            RouteDecision.KG_RETRIEVAL: "Durian pest/disease domain question requiring knowledge base",
+            RouteDecision.WEB_SEARCH: "Request for latest/recent information",
+            RouteDecision.LLM_INTERNAL: "Out-of-domain question",
+            RouteDecision.VLM_INTERNAL: "Image-based question requiring visual analysis",
+        }
+        reason = route_reasons.get(route, "Default routing")
+        print(LogMessages.ROUTE_TO.format(route.upper(), reason))
+
+        # If llm_internal or vlm_internal, route directly to answer_generation (with no context)
+        if route in [RouteDecision.LLM_INTERNAL, RouteDecision.VLM_INTERNAL]:
             return RouteDecision.ANSWER_GENERATION
         return route
     except Exception as e:
-        print(
-            LogMessages.ERROR_IN.format(
-                "ROUTING", f"{e}, DEFAULTING TO ANSWER GENERATION"
-            )
-        )
+        print(LogMessages.ERROR_IN.format("ROUTING", str(e)))
+        print("  → Defaulting to ANSWER_GENERATION")
         return RouteDecision.ANSWER_GENERATION
 
 
@@ -59,7 +76,7 @@ async def decide_to_generate(
                 LogMessages.MAX_RETRIES_REACHED.format(
                     current_retry,
                     Defaults.MAX_QUERY_TRANSFORMATION_RETRIES,
-                    "WEB SEARCH",
+                    "Falling back to WEB SEARCH",
                 )
             )
             return RouteDecision.WEB_SEARCH
@@ -105,7 +122,7 @@ async def grade_generation_and_context(
                     LogMessages.MAX_RETRIES_REACHED.format(
                         current_hallucination_retry,
                         Defaults.MAX_HALLUCINATION_RETRIES,
-                        "GROUNDED (BEST EFFORT)",
+                        "Proceeding with best-effort answer",
                     )
                 )
                 # Return as grounded to end workflow with best effort answer
@@ -155,10 +172,10 @@ async def grade_generation_and_question(
                 LogMessages.MAX_RETRIES_REACHED.format(
                     current_retry,
                     Defaults.MAX_QUERY_TRANSFORMATION_RETRIES,
-                    "END (BEST EFFORT)",
+                    "Ending workflow with best-effort answer",
                 )
             )
-            # Return as corect to end workflow with best effort answer
+            # Return as correct to end workflow with best effort answer
             return RouteDecision.CORRECT
 
         print(LogMessages.DECISION_NOT_ADDRESSES_QUESTION)
@@ -311,6 +328,7 @@ async def build_workflow(
 
 async def run_workflow(
     question: str,
+    image: Optional[str] = None,
     n_retrieved_documents: int = Defaults.N_RETRIEVED_DOCUMENTS,
     n_web_searches: int = Defaults.N_WEB_SEARCHES,
     node_retrieval: bool = Defaults.NODE_RETRIEVAL,
@@ -331,6 +349,7 @@ async def run_workflow(
     ).compile()
     inputs = {
         "question": question,
+        "image": image,
         "n_retrieved_documents": n_retrieved_documents,
         "n_web_searches": n_web_searches,
         "node_retrieval": node_retrieval,

@@ -10,6 +10,11 @@ class WorkflowRequest(BaseModel):
         max_length=2000,
         examples=["What symptom distinguishes Phomopsis leaf spot?"],
     )
+    image: Optional[str] = Field(
+        default=None,
+        description="Base64 encoded image data for visual question answering",
+        examples=["data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ..."],
+    )
     n_retrieved_documents: int = Field(
         default=3,
         ge=1,

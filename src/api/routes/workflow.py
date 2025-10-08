@@ -50,6 +50,7 @@ async def run_workflow_internal(
     enable_retrieved_document_grading: bool,
     enable_hallucination_checking: bool,
     enable_answer_quality_checking: bool,
+    image: str = None,
 ) -> Dict[str, Any]:
     global _current_workflow_steps, _current_citations, _last_step_time, _workflow_start_time
 
@@ -69,6 +70,7 @@ async def run_workflow_internal(
 
     inputs = {
         "question": question,
+        "image": image,
         "n_retrieved_documents": n_documents,
         "n_web_searches": n_requests,
         "node_retrieval": node_retrieval,
@@ -171,7 +173,7 @@ async def run_workflow_internal(
     response_model=WorkflowResponse,
     status_code=status.HTTP_200_OK,
     summary="Run the adaptive RAG workflow",
-    description="Execute the adaptive RAG workflow with a question and return the generated answer along with citations and workflow steps.",
+    description="Execute the adaptive RAG workflow with a question (and optionally an image) and return the generated answer along with citations and workflow steps.",
     responses={
         200: {
             "description": "Workflow executed successfully",
@@ -263,6 +265,7 @@ async def run_workflow(request: WorkflowRequest) -> WorkflowResponse:
             enable_retrieved_document_grading=request.enable_retrieved_documents_grading,
             enable_hallucination_checking=request.enable_hallucination_checking,
             enable_answer_quality_checking=request.enable_answer_quality_checking,
+            image=request.image,
         )
 
         # Calculate total processing time

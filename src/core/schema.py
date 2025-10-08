@@ -7,9 +7,9 @@ class RouteQuery(BaseModel):
     """Route a user query to the most relevant data_source."""
 
     data_source: Literal[
-        Tools.KG_RETRIEVAL.value, Tools.WEB_SEARCH.value, Tools.LLM_INTERNAL.value
+        Tools.KG_RETRIEVAL.value, Tools.WEB_SEARCH.value, Tools.LLM_INTERNAL.value, Tools.VLM_INTERNAL.value
     ] = Field(
-        description="Route to knowledge graph retrieval for durian pest/disease domain questions, web search for latest pest/disease information, or LLM internal knowledge for out-of-domain questions."
+        description="Route to knowledge graph retrieval for durian pest/disease domain questions, web search for latest pest/disease information, LLM internal knowledge for out-of-domain questions, or VLM internal for image-based questions."
     )
 
 

@@ -23,4 +23,5 @@ dependencies = [
     "uvicorn>=0.37.0",
     "fastapi>=0.118.0",
     "streamlit>=1.50.0",
+    "python-multipart>=0.0.20",
 ]

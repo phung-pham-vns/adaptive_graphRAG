@@ -1,0 +1,63 @@
+# https://docs.openwebui.com/getting-started/env-configuration/
+
+version: '3.8'
+
+services:
+  # OpenWebUI Service
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: openwebui-adaptive-rag
+    ports:
+      - "3000:8080"
+    volumes:
+      - openwebui-data:/app/backend/data
+      - ./openwebui_pipeline.py:/app/backend/data/pipelines/openwebui_pipeline.py
+      - ollama:/root/.ollama
+    environment:
+      # OpenWebUI Configuration
+      - WEBUI_NAME=PlantDoctor
+      - WEBUI_URL=http://localhost:3000
+
+      # Enable pipelines
+      - ENABLE_PIPELINES=true
+      - PIPELINES_DIR=/app/backend/data/pipelines
+
+      # Optional: Disable default models if you only want to use the pipeline
+      # - ENABLE_OLLAMA_API=false
+      # - ENABLE_OPENAI_API=false
+
+      # Admin user (change these!)
+      - WEBUI_AUTH=true
+      - WEBUI_SECRET_KEY=your-secret-key-change-this
+      # Optional: Enable RAG (if you want to use OpenWebUI's built-in RAG too)
+      # - ENABLE_RAG=true
+
+      - ENABLE_TAGS_GENERATION=false
+      - ENABLE_FOLLOW_UP_GENERATION=false
+      - ENABLE_TITLE_GENERATION=false
+
+    restart: unless-stopped
+
+    networks:
+      - adaptive-rag-network
+
+    # If your Adaptive RAG API is running on host machine
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  openwebui-data:
+    driver: local
+  ollama:
+
+
+networks:
+  adaptive-rag-network:
+    driver: bridge

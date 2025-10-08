@@ -22,6 +22,7 @@ dependencies = [
     { name = "pandas" },
     { name = "pydantic" },
     { name = "python-dotenv" },
+    { name = "python-multipart" },
     { name = "ragas" },
     { name = "streamlit" },
     { name = "uvicorn" },
@@ -44,6 +45,7 @@ requires-dist = [
     { name = "pandas", specifier = "==2.3.2" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
+    { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "ragas", specifier = ">=0.3.5" },
     { name = "streamlit", specifier = ">=1.50.0" },
     { name = "uvicorn", specifier = ">=0.37.0" },
@@ -527,7 +529,7 @@ wheels = [
 
 [[package]]
 name = "graphiti-core"
-version = "0.20.4"
+version = "0.21.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "diskcache" },
@@ -539,9 +541,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/dd/80/5d75a60f1c7bbeb6b2d8e37bcb398ea23a0660ce96550862ddd50e827f8f/graphiti_core-0.20.4.tar.gz", hash = "sha256:12d90b273ba80b0b34891aec68cc6fa535cd4e82d04e47e07c071551b70784c0", size = 6491694, upload-time = "2025-09-08T19:43:40.446Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f5/d7/53aa9d2a3606ddbd942d6628cdc80967b1d9adf185d8feb9063b58700891/graphiti_core-0.21.0.tar.gz", hash = "sha256:742ad2c2c8e1cffafc96b59d03fb64422fc6477a776b78a015dd8e978e0727ed", size = 6376125, upload-time = "2025-10-03T18:02:06.89Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/53/d2/74cfd73347f8fbd40277332269cd17ca007a61ce4d5214edbc021ad51228/graphiti_core-0.20.4-py3-none-any.whl", hash = "sha256:2820b49ba0b957d9a9b803f266d46dc7328b5b2593695f54626ebffb33f05f97", size = 152878, upload-time = "2025-09-08T19:43:38.155Z" },
+    { url = "https://files.pythonhosted.org/packages/ca/ea/767c572f31f9ea7e7d4ceeaa7a84095e689e3ee2af70de32a09663ce8d51/graphiti_core-0.21.0-py3-none-any.whl", hash = "sha256:0ed0ad4052fecf8409db7c7cf668a8203254ca27f04d57fada0a974f22e6782a", size = 164665, upload-time = "2025-10-03T18:02:04.939Z" },
 ]
 
 [package.optional-dependencies]
@@ -1725,6 +1727,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f6/b0/4bc07ccd3572a2f9df7e6782f52b0c6c90dcbb803ac4a167702d7d0dfe1e/python_dotenv-1.1.1.tar.gz", hash = "sha256:a8a6399716257f45be6a007360200409fce5cda2661e3dec71d23dc15f6189ab", size = 41978, upload-time = "2025-06-24T04:21:07.341Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5f/ed/539768cf28c661b5b068d66d96a2f155c4971a5d55684a514c1a0e0dec2f/python_dotenv-1.1.1-py3-none-any.whl", hash = "sha256:31f23644fe2602f88ff55e1f5c79ba497e01224ee7737937930c448e4d0e24dc", size = 20556, upload-time = "2025-06-24T04:21:06.073Z" },
+]
+
+[[package]]
+name = "python-multipart"
+version = "0.0.20"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/87/f44d7c9f274c7ee665a29b885ec97089ec5dc034c7f3fafa03da9e39a09e/python_multipart-0.0.20.tar.gz", hash = "sha256:8dd0cab45b8e23064ae09147625994d090fa46f5b0d1e13af944c331a7fa9d13", size = 37158, upload-time = "2024-12-16T19:45:46.972Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/45/58/38b5afbc1a800eeea951b9285d3912613f2603bdf897a4ab0f4bd7f405fc/python_multipart-0.0.20-py3-none-any.whl", hash = "sha256:8a62d3a8335e06589fe01f2a3e178cdcc632f3fbe0d492ad9ee0ec35aab1f104", size = 24546, upload-time = "2024-12-16T19:45:44.423Z" },
 ]
 
 [[package]]

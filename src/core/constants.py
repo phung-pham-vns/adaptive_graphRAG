@@ -9,6 +9,7 @@ class RouteDecision:
     WEB_SEARCH = "web_search"
     KG_RETRIEVAL = "kg_retrieval"
     LLM_INTERNAL = "llm_internal"
+    VLM_INTERNAL = "vlm_internal"
     QUERY_TRANSFORMATION = "query_transformation"
     ANSWER_GENERATION = "answer_generation"
     CORRECT = "correct"
@@ -19,35 +20,53 @@ class RouteDecision:
 
 # Log messages
 class LogMessages:
-    ROUTE_QUESTION = "[..] ROUTE QUESTION"
-    ROUTE_TO = "[..] ROUTE QUESTION TO {}"
-    WEB_SEARCH = "[..] WEB SEARCH"
-    KNOWLEDGE_GRAPH_RETRIEVAL = "[..] KNOWLEDGE GRAPH RETRIEVAL"
-    LLM_INTERNAL_ANSWER = "[..] LLM INTERNAL ANSWER (OUT OF DOMAIN)"
-    ANSWER_GENERATION = "[..] ANSWER GENERATION"
-    CHECK_DOCUMENT_RELEVANCE = "[..] CHECK DOCUMENT RELEVANCE TO QUESTION"
-    QUERY_TRANSFORMATION = "[..] QUERY TRANSFORMATION"
-    ASSESS_GRADED_DOCUMENTS = "[..] ASSESS GRADED DOCUMENTS"
-    CHECK_HALLUCINATIONS = "[..] CHECK HALLUCINATIONS"
-    CHECK_ANSWER_QUALITY = "[..] CHECK ANSWER QUALITY"
-    GRADE_RELEVANT = "[..][..] GRADE: {} CONTENT RELEVANT"
-    GRADE_NOT_RELEVANT = "[..][..] GRADE: {} CONTENT NOT RELEVANT"
-    ERROR_GRADING = "[..][..] ERROR GRADING {} CONTENT: {}"
-    ERROR_IN = "[..][..] ERROR IN {}: {}"
+    # Routing
+    ROUTE_QUESTION = "🔀 [ROUTING] Analyzing question to determine optimal data source..."
+    ROUTE_TO = "🔀 [ROUTING] → Routing to: {} (Reason: {})"
+    
+    # Retrieval
+    WEB_SEARCH = "🌐 [WEB SEARCH] Searching web for latest information..."
+    KNOWLEDGE_GRAPH_RETRIEVAL = "📊 [KNOWLEDGE GRAPH] Retrieving from durian pest/disease knowledge base..."
+    KNOWLEDGE_GRAPH_STATS = "📊 [KNOWLEDGE GRAPH] Retrieved: {} nodes, {} edges"
+    LLM_INTERNAL_ANSWER = "🤖 [LLM INTERNAL] Generating answer using internal knowledge (out-of-domain query)"
+    
+    # Answer Generation
+    ANSWER_GENERATION = "✍️  [GENERATION] Generating answer from retrieved context..."
+    ANSWER_GENERATION_WITH_CONTEXT = "✍️  [GENERATION] Context available: {} entities, {} relationships, {} web results"
+    
+    # Document Grading
+    CHECK_DOCUMENT_RELEVANCE = "🔍 [GRADING] Assessing relevance of retrieved documents..."
+    GRADE_RELEVANT = "  ✓ {} content is RELEVANT"
+    GRADE_NOT_RELEVANT = "  ✗ {} content is NOT RELEVANT (filtered out)"
+    GRADING_SUMMARY = "🔍 [GRADING] Summary: {}/{} documents relevant after filtering"
+    ERROR_GRADING = "  ⚠️  Error grading {} content: {}"
+    
+    # Query Transformation
+    QUERY_TRANSFORMATION = "🔄 [TRANSFORMATION] Refining query for better retrieval..."
+    QUERY_TRANSFORMATION_RESULT = "🔄 [TRANSFORMATION] Original: '{}' → Refined: '{}'"
+    
+    # Decision Points
+    ASSESS_GRADED_DOCUMENTS = "🔍 [DECISION] Evaluating if sufficient relevant context exists..."
     DECISION_ALL_DOCUMENTS_NOT_RELEVANT = (
-        "[..][..] DECISION: ALL DOCUMENTS ARE NOT RELEVANT, TRANSFORM QUERY"
+        "  → No relevant documents found. Attempting query transformation..."
     )
-    DECISION_GENERATE = "[..][..] DECISION: GENERATE"
-    DECISION_GROUNDED = "[..][..] DECISION: GENERATION IS GROUNDED IN DOCUMENTS"
-    DECISION_NOT_GROUNDED = (
-        "[..][..] DECISION: GENERATION IS NOT GROUNDED IN DOCUMENTS, RE-TRY"
-    )
-    DECISION_ADDRESSES_QUESTION = "[..][..] DECISION: GENERATION ADDRESSES QUESTION"
-    DECISION_NOT_ADDRESSES_QUESTION = (
-        "[..][..] DECISION: GENERATION DOES NOT ADDRESS QUESTION"
-    )
-    MAX_RETRIES_REACHED = "[..][..] MAX RETRIES REACHED: {}/{}. FALLING BACK TO {}"
-    RETRY_COUNT_INFO = "[..][..] RETRY COUNT: {}/{}"
+    DECISION_GENERATE = "  ✓ Sufficient relevant context found. Proceeding to answer generation."
+    
+    # Quality Checks
+    CHECK_HALLUCINATIONS = "🔍 [QUALITY CHECK] Verifying answer is grounded in provided context..."
+    DECISION_GROUNDED = "  ✓ Answer is GROUNDED in context (hallucination check passed)"
+    DECISION_NOT_GROUNDED = "  ✗ Answer NOT GROUNDED in context. Regenerating..."
+    
+    CHECK_ANSWER_QUALITY = "🔍 [QUALITY CHECK] Verifying answer addresses the question..."
+    DECISION_ADDRESSES_QUESTION = "  ✓ Answer ADDRESSES the question (quality check passed)"
+    DECISION_NOT_ADDRESSES_QUESTION = "  ✗ Answer does NOT address question. Retrying with refined query..."
+    
+    # Retry Management
+    MAX_RETRIES_REACHED = "⚠️  [RETRY] Max retries reached ({}/{}). {} with best-effort answer."
+    RETRY_COUNT_INFO = "🔄 [RETRY] Attempt {}/{}"
+    
+    # Errors
+    ERROR_IN = "❌ [ERROR] {} failed: {}"
 
 
 # Default configuration values

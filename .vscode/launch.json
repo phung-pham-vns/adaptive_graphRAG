@@ -10,15 +10,16 @@
             "request": "launch",
             "program": "src/core/workflow.py",
             "console": "integratedTerminal",
-            "justMyCode": false,
+            "justMyCode": true,
             "args": [
                 "--question",
-                "What causes durian leaf curl?",
+                "What is a significant durian pest found in Southeast Asia, a major durian-producing region, and what are some of its key characteristics and prevalence in this area?",
                 "--n-retrieved-documents",
-                "3",
+                "10",
                 "--n-web-searches",
                 "3",
-                "--edge-retrieval"
+                "--edge-retrieval",
+                "--node-retrieval"
             ],
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
