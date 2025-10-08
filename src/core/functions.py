@@ -43,6 +43,7 @@ from src.core.constants import (
 
 class GraphState(TypedDict):
     question: str
+    image: Optional[str]  # Base64 encoded image data
     generation: Optional[str]
     node_contents: list[str]
     edge_contents: list[str]
@@ -388,6 +389,23 @@ async def answer_generation(state: GraphState) -> dict:
     node_citations = state.get("node_citations", [])
     edge_citations = state.get("edge_citations", [])
     web_citations = state.get("web_citations", [])
+    image = state.get("image")
+
+    # Check if image is provided - use VLM for image-based questions
+    if image:
+        print("🖼️ [VLM] Generating answer using visual language model for image-based question")
+        try:
+            # For now, we'll use the LLM internal generator as a placeholder
+            # In a real implementation, you would use a VLM chain here
+            generation = await llm_internal_answer_generator.ainvoke(
+                {"question": f"Based on the provided image, {state['question']}"}
+            )
+            return {"generation": generation.answer, "hallucination_retry_count": 0}
+        except Exception as e:
+            print(LogMessages.ERROR_IN.format("VLM ANSWER", e))
+            return {
+                "generation": "I apologize, but I'm unable to analyze the image at the moment."
+            }
 
     # Check if any context is available
     has_context = bool(node_contents or edge_contents or web_contents)

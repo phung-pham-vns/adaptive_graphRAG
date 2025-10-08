@@ -9,6 +9,7 @@ class RouteDecision:
     WEB_SEARCH = "web_search"
     KG_RETRIEVAL = "kg_retrieval"
     LLM_INTERNAL = "llm_internal"
+    VLM_INTERNAL = "vlm_internal"
     QUERY_TRANSFORMATION = "query_transformation"
     ANSWER_GENERATION = "answer_generation"
     CORRECT = "correct"

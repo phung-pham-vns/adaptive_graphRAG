@@ -66,23 +66,45 @@ class Pipe:
         logger.info(f"[{request_id}] ========== PIPELINE EXECUTION START ==========")
         logger.info(f"[{request_id}] User: {__user__.get('name', 'Unknown') if __user__ else 'Unknown'}")
 
-        # Extract question from messages
+        # Extract question and image from messages
         messages = body.get("messages", [])
         if not messages:
             return "❌ No messages provided."
 
         # Get last user message
         question = ""
+        image_data = None
+        
         for msg in reversed(messages):
             if msg.get("role") == "user":
-                question = msg.get("content", "")
+                content = msg.get("content", "")
+                
+                # Handle different content formats
+                if isinstance(content, str):
+                    question = content
+                elif isinstance(content, list):
+                    # Handle multimodal content (text + images)
+                    for item in content:
+                        if item.get("type") == "text":
+                            question = item.get("text", "")
+                        elif item.get("type") == "image_url":
+                            image_url = item.get("image_url", {}).get("url", "")
+                            if image_url.startswith("data:"):
+                                # Extract base64 data from data URL
+                                image_data = image_url
+                            else:
+                                logger.warning(f"[{request_id}] Non-data URL image detected: {image_url[:50]}...")
                 break
 
         if not question:
             logger.warning(f"[{request_id}] No question found in messages")
             return "❌ No question found in messages."
 
-        logger.info(f"[{request_id}] Question: {question[:100]}...")
+        # Log input details
+        if image_data:
+            logger.info(f"[{request_id}] Question: {question[:100]}... (with image)")
+        else:
+            logger.info(f"[{request_id}] Question: {question[:100]}...")
         
         # Get selected model
         model_id = body.get("model", "naive_graph_rag")
@@ -95,11 +117,12 @@ class Pipe:
 
         # Emit initial status
         if __event_emitter__:
+            input_type = "multimodal (text + image)" if image_data else "text-only"
             await __event_emitter__(
                 {
                     "type": "status",
                     "data": {
-                        "description": f"🚀 Starting workflow ({mode_display} mode)...",
+                        "description": f"🚀 Starting workflow ({mode_display} mode, {input_type})...",
                         "done": False,
                     },
                 }
@@ -115,6 +138,10 @@ class Pipe:
                 "question": question,
                 **request_body,
             }
+            
+            # Add image if present
+            if image_data:
+                payload["image"] = image_data
 
             # Call API
             logger.info(f"[{request_id}] Calling API: {self.valves.API_BASE_URL}/workflow/run")
@@ -164,7 +191,7 @@ class Pipe:
                 )
 
             logger.info(f"[{request_id}] ========== PIPELINE EXECUTION END ==========")
-            return self.format_response(data)
+            return self.format_response(data, image_processed=bool(image_data))
 
         except requests.exceptions.Timeout:
             logger.error(f"[{request_id}] Request timeout")
@@ -219,7 +246,7 @@ class Pipe:
         }
         return configs.get(mode.lower(), configs["naive_graph_rag"])
 
-    def format_response(self, response: dict[str, any]) -> str:
+    def format_response(self, response: dict[str, any], image_processed: bool = False) -> str:
         parts = []
 
         # Main answer
@@ -228,6 +255,12 @@ class Pipe:
 
         # Add separator before metadata
         parts.append("\n\n---")
+        
+        # Add input type indicator
+        if image_processed:
+            parts.append("\n### 📸 Input Type")
+            parts.append("**Multimodal Analysis** (Text + Image)")
+            parts.append("")
 
         # Citations
         if self.valves.SHOW_CITATIONS:

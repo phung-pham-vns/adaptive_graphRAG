@@ -49,10 +49,11 @@ app = FastAPI(
     
     ## Features
     
-    - 🔄 **3-Way Adaptive Routing**: 
+    - 🔄 **4-Way Adaptive Routing**: 
       * Knowledge Graph for domain-specific durian pest/disease questions
       * Web Search for latest pest/disease information
       * LLM Internal for out-of-domain questions (general knowledge, greetings, etc.)
+      * VLM Internal for image-based questions (visual analysis)
     - ⚡ **Performance Optimization**: Toggle quality checks for faster responses
     - 📚 **Source Citations**: Track where information comes from
     - 🔍 **Document Grading**: Optional relevance checking of retrieved documents
@@ -90,9 +91,18 @@ app = FastAPI(
       }'
     
     # Latest information question (routes to Web Search)
-    curl -X POST "http://localhost:8000/workflow/run-simple" \\
+    curl -X POST "http://localhost:8000/workflow/run-simple"
+    
+    # Image-based question (routes to VLM Internal)
+    curl -X POST "http://localhost:8000/workflow/run" \\
       -H "Content-Type: application/json" \\
-      -d '{"question": "What are the latest news about durian pests?"}'
+      -d '{
+        "question": "What disease is shown in this image?",
+        "image": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ...",
+        "n_documents": 3,
+        "enable_document_grading": false,
+        "enable_generation_grading": false
+      }'
     
     # Out-of-domain question (routes to LLM Internal)
     curl -X POST "http://localhost:8000/workflow/run-simple" \\

@@ -12,6 +12,7 @@ services:
     volumes:
       - openwebui-data:/app/backend/data
       - ./openwebui_pipeline.py:/app/backend/data/pipelines/openwebui_pipeline.py
+      - ollama:/root/.ollama
     environment:
       # OpenWebUI Configuration
       - WEBUI_NAME=PlantDoctor
@@ -54,6 +55,8 @@ services:
 volumes:
   openwebui-data:
     driver: local
+  ollama:
+
 
 networks:
   adaptive-rag-network:
